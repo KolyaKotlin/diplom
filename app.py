@@ -39,6 +39,7 @@ CEREBRAS_KEY = os.environ.get('CEREBRAS_API_KEY', '')
 GIGACHAT_AUTH_KEY = os.environ.get('GIGACHAT_AUTH_KEY', '')
 SMTP_EMAIL = os.environ.get('SMTP_EMAIL', '')
 SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
+RESEND_API_KEY = (os.environ.get('RESEND_API_KEY') or '').strip()
 MAILGUN_API_KEY = (os.environ.get('MAILGUN_API_KEY') or '').strip()
 MAILGUN_DOMAIN = (os.environ.get('MAILGUN_DOMAIN') or '').strip()
 MAILGUN_FROM = (os.environ.get('MAILGUN_FROM') or '').strip() or (('noreply@' + MAILGUN_DOMAIN) if MAILGUN_DOMAIN else '')
@@ -602,12 +603,34 @@ def logout():
 _reset_codes = {}
 
 def _send_email(to, subject, body):
-    """Send email via Gmail SMTP (465) or Mailgun if configured. Returns (success: bool, error_message: str|None)."""
+    """Send via Resend (без домена!) -> Mailgun -> Gmail SMTP. Returns (success: bool, error_message: str|None)."""
     from email.utils import formataddr
     from email.mime.text import MIMEText
     from email.header import Header
 
-    # Опционально: Mailgun по HTTPS (если заданы ключи)
+    # Resend — без домена, на любой email. Бесплатно 100 писем/день.
+    if RESEND_API_KEY:
+        try:
+            r = http_requests.post(
+                'https://api.resend.com/emails',
+                headers={'Authorization': f'Bearer {RESEND_API_KEY}', 'Content-Type': 'application/json'},
+                json={
+                    'from': 'Сервис решений <onboarding@resend.dev>',
+                    'to': [to],
+                    'subject': subject,
+                    'html': body,
+                },
+                timeout=15,
+            )
+            if r.status_code in (200, 201):
+                print(f'[Email] sent to {to} via Resend')
+                return True, None
+            err = (r.json() or {}).get('message', r.text[:200]) if r.text else 'Unknown error'
+            return False, err
+        except Exception as e:
+            return False, str(e)[:200]
+
+    # Mailgun по HTTPS (нужен домен или sandbox)
     if MAILGUN_API_KEY and MAILGUN_DOMAIN and MAILGUN_FROM:
         try:
             r = http_requests.post(
@@ -631,7 +654,7 @@ def _send_email(to, subject, body):
 
     # Gmail SMTP — как раньше: один раз порт 465, пароль без пробелов
     if not SMTP_EMAIL or not SMTP_PASSWORD:
-        return False, 'Почта не настроена. Добавьте SMTP_EMAIL и SMTP_PASSWORD в .env'
+        return False, 'Почта не настроена. Добавьте RESEND_API_KEY (resend.com, без домена) или SMTP_EMAIL/SMTP_PASSWORD в .env'
     smtp_pass = (SMTP_PASSWORD or '').replace(' ', '')
     msg = MIMEText(body, 'html', 'utf-8')
     msg['From'] = formataddr(('Сервис решений', SMTP_EMAIL))
