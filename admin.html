@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Админ-панель — Сервис решений</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <style>
+    .admin-page { max-width: 56rem; margin: 0 auto; padding: 1.5rem; }
+    .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.75rem; }
+    .admin-header h1 { font-size: 1.25rem; margin: 0; color: var(--text); }
+    .admin-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem; margin-bottom: 1.5rem; }
+    .admin-section h2 { font-size: 1rem; margin: 0 0 1rem; color: var(--text); }
+    .admin-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    .admin-table th, .admin-table td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+    .admin-table th { font-weight: 600; color: var(--text-muted); }
+    .admin-table tr:last-child td { border-bottom: none; }
+    .badge-blocked { background: #fef2f2; color: #dc2626; padding: 0.125rem 0.5rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 600; }
+    .badge-warn { background: #fef9c3; color: #a16207; padding: 0.125rem 0.5rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 600; }
+    .admin-denied { text-align: center; padding: 3rem 2rem; color: var(--text-muted); }
+    .admin-denied a { color: var(--primary); }
+    .log-reason { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <div class="admin-page">
+    <div class="admin-header">
+      <h1>Админ-панель</h1>
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        <button class="theme-toggle" id="themeToggle" title="Сменить тему">&#9790;</button>
+        <a href="dashboard.html" class="btn btn-outline">На дашборд</a>
+        <a href="index.html" class="btn btn-outline">На главную</a>
+      </div>
+    </div>
+
+    <div id="adminContent">
+      <div class="admin-denied" id="adminDenied" style="display:none;">
+        <p>Доступ запрещён. Только для администраторов.</p>
+        <p><a href="dashboard.html">Вернуться в дашборд</a></p>
+      </div>
+
+      <div id="adminPanels" style="display:none;">
+        <div class="admin-section" style="margin-bottom:1rem;">
+          <h2>Лента</h2>
+          <p style="margin:0 0 0.75rem;font-size:0.9375rem;color:var(--text-muted);">Если в ленте ничего не отображается — все опросы и решения могли быть без галочки «Опубликовать в ленте». Нажмите кнопку, чтобы опубликовать все существующие в ленту.</p>
+          <button type="button" class="btn btn-primary" id="publishAllToFeedBtn">Опубликовать все опросы и решения в ленту</button>
+          <span id="publishAllStatus" style="margin-left:0.75rem;font-size:0.875rem;color:var(--text-muted);"></span>
+        </div>
+
+        <div class="admin-section">
+          <h2>Опросы — модерация</h2>
+          <p style="margin:0 0 0.75rem;font-size:0.9375rem;color:var(--text-muted);">Удаление опроса удалит все голоса и варианты ответов.</p>
+          <div class="table-wrap" style="overflow-x:auto;">
+            <table class="admin-table" id="pollsModTable">
+              <thead>
+                <tr>
+                  <th>Название</th>
+                  <th>Автор</th>
+                  <th>Дата</th>
+                  <th>В ленте</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="pollsModBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="admin-section">
+          <h2>Решения — модерация</h2>
+          <p style="margin:0 0 0.75rem;font-size:0.9375rem;color:var(--text-muted);">Удаление решения удалит все ответы и оценки.</p>
+          <div class="table-wrap" style="overflow-x:auto;">
+            <table class="admin-table" id="decisionsModTable">
+              <thead>
+                <tr>
+                  <th>Название</th>
+                  <th>Автор</th>
+                  <th>Дата</th>
+                  <th>В ленте</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="decisionsModBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="admin-section">
+          <h2>Пользователи</h2>
+          <div class="table-wrap" style="overflow-x:auto;">
+            <table class="admin-table" id="usersTable">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Email</th>
+                  <th>Имя</th>
+                  <th>Регистрация</th>
+                  <th>Предупр.</th>
+                  <th>Статус</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="usersBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="admin-section">
+          <h2>Лог модерации</h2>
+          <div class="table-wrap" style="overflow-x:auto;">
+            <table class="admin-table" id="logTable">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Пользователь</th>
+                  <th>Тип</th>
+                  <th>Контент / причина</th>
+                </tr>
+              </thead>
+              <tbody id="logBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/main.js?v=4"></script>
+  <script>
+    (function() {
+      var denied = document.getElementById('adminDenied');
+      var panels = document.getElementById('adminPanels');
+
+      function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+      apiGet('/api/admin/check').then(function(res) {
+        if (res.status !== 200 || !res.data.admin) {
+          denied.style.display = 'block';
+          return;
+        }
+        panels.style.display = 'block';
+        loadUsers();
+        loadLog();
+        loadPolls();
+        loadDecisions();
+        var pubBtn = document.getElementById('publishAllToFeedBtn');
+        var pubStatus = document.getElementById('publishAllStatus');
+        if (pubBtn) {
+          pubBtn.addEventListener('click', function() {
+            pubBtn.disabled = true;
+            pubStatus.textContent = 'Отправка…';
+            apiPost('/api/admin/publish-all-to-feed', {}).then(function(r) {
+              if (r.data && r.data.ok) {
+                pubStatus.innerHTML = 'Готово: ' + (r.data.polls || 0) + ' опросов, ' + (r.data.decisions || 0) + ' решений. <a href="feed.html" target="_blank">Открыть ленту</a> (обнови страницу ленты, если пусто).';
+                setTimeout(function() { pubStatus.innerHTML = ''; }, 12000);
+              } else {
+                pubStatus.textContent = 'Ошибка: ' + (r.data && r.data.error ? r.data.error : 'неизвестно');
+              }
+              pubBtn.disabled = false;
+            }).catch(function() {
+              pubStatus.textContent = 'Ошибка сети';
+              pubBtn.disabled = false;
+            });
+          });
+        }
+      }).catch(function() {
+        denied.style.display = 'block';
+      });
+
+      function loadUsers() {
+        apiGet('/api/admin/users').then(function(res) {
+          if (res.status !== 200 || !res.data.users) return;
+          var tbody = document.getElementById('usersBody');
+          tbody.innerHTML = res.data.users.map(function(u) {
+            var created = u.createdAt ? u.createdAt.slice(0, 10) : '—';
+            var status = u.isBlocked
+              ? '<span class="badge-blocked">Заблокирован</span>'
+              : '<span style="color:var(--text-muted);">Активен</span>';
+            var warn = u.warnings > 0 ? '<span class="badge-warn">' + u.warnings + '</span>' : '0';
+            var unbanBtn = u.isBlocked
+              ? '<button class="btn btn-outline btn-unban" data-id="' + u.id + '" style="font-size:0.8125rem;">Разбанить</button>'
+              : '';
+            return '<tr><td>' + u.id + '</td><td>' + esc(u.email) + '</td><td>' + esc((u.firstName || '') + ' ' + (u.lastName || '')) + '</td><td>' + created + '</td><td>' + warn + '</td><td>' + status + '</td><td>' + unbanBtn + '</td></tr>';
+          }).join('');
+          tbody.querySelectorAll('.btn-unban').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var id = parseInt(btn.dataset.id, 10);
+              if (!id) return;
+              btn.disabled = true;
+              apiPost('/api/admin/users/' + id + '/unban', {}).then(function(r) {
+                if (r.data && r.data.ok) loadUsers();
+                else btn.disabled = false;
+              }).catch(function() { btn.disabled = false; });
+            });
+          });
+        });
+      }
+
+      function loadLog() {
+        apiGet('/api/admin/moderation-log').then(function(res) {
+          if (res.status !== 200 || !res.data.log) return;
+          var tbody = document.getElementById('logBody');
+          if (res.data.log.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted);">Записей нет</td></tr>';
+            return;
+          }
+          tbody.innerHTML = res.data.log.map(function(m) {
+            var created = m.createdAt ? m.createdAt.replace('T', ' ').slice(0, 19) : '—';
+            var content = (m.pollTitle || m.reason || '—').slice(0, 60);
+            return '<tr><td>' + esc(created) + '</td><td>' + esc(m.userEmail) + '</td><td>' + esc(m.contentType) + '</td><td class="log-reason" title="' + esc(m.reason || m.pollTitle || '') + '">' + esc(content) + '</td></tr>';
+          }).join('');
+        });
+      }
+
+      function loadPolls() {
+        apiGet('/api/admin/polls').then(function(res) {
+          if (res.status !== 200 || !res.data.polls) return;
+          var tbody = document.getElementById('pollsModBody');
+          if (res.data.polls.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);">Опросов нет</td></tr>';
+            return;
+          }
+          tbody.innerHTML = res.data.polls.map(function(p) {
+            var created = p.createdAt ? p.createdAt.slice(0, 10) : '—';
+            var pub = p.isPublic ? 'Да' : 'Нет';
+            return '<tr><td>' + esc(p.title) + '</td><td>' + esc(p.authorName || p.authorEmail || '') + '</td><td>' + created + '</td><td>' + pub + '</td><td><button class="btn btn-outline btn-delete-poll" data-slug="' + esc(p.slug) + '" style="font-size:0.8125rem;color:#dc2626;">Удалить</button></td></tr>';
+          }).join('');
+          tbody.querySelectorAll('.btn-delete-poll').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var slug = btn.dataset.slug;
+              var pt = (res.data.polls || []).filter(function(x) { return x.slug === slug; })[0];
+              if (!slug || !confirm('Удалить опрос «' + (pt ? pt.title : slug) + '»? Все голоса будут удалены.')) return;
+              btn.disabled = true;
+              apiDelete('/api/admin/polls/' + encodeURIComponent(slug)).then(function(r) {
+                if (r.data && r.data.ok) loadPolls();
+                else { alert(r.data && r.data.error ? r.data.error : 'Ошибка'); btn.disabled = false; }
+              }).catch(function() { btn.disabled = false; });
+            });
+          });
+        });
+      }
+
+      function loadDecisions() {
+        apiGet('/api/admin/decisions').then(function(res) {
+          if (res.status !== 200 || !res.data.decisions) return;
+          var tbody = document.getElementById('decisionsModBody');
+          if (res.data.decisions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);">Решений нет</td></tr>';
+            return;
+          }
+          tbody.innerHTML = res.data.decisions.map(function(d) {
+            var created = d.createdAt ? d.createdAt.slice(0, 10) : '—';
+            var pub = d.isPublic ? 'Да' : 'Нет';
+            return '<tr><td>' + esc(d.title) + '</td><td>' + esc(d.authorName || d.authorEmail || '') + '</td><td>' + created + '</td><td>' + pub + '</td><td><button class="btn btn-outline btn-delete-decision" data-slug="' + esc(d.slug) + '" style="font-size:0.8125rem;color:#dc2626;">Удалить</button></td></tr>';
+          }).join('');
+          tbody.querySelectorAll('.btn-delete-decision').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var slug = btn.dataset.slug;
+              var dt = (res.data.decisions || []).filter(function(x) { return x.slug === slug; })[0];
+              if (!slug || !confirm('Удалить решение «' + (dt ? dt.title : slug) + '»? Все ответы будут удалены.')) return;
+              btn.disabled = true;
+              apiDelete('/api/admin/decisions/' + encodeURIComponent(slug)).then(function(r) {
+                if (r.data && r.data.ok) loadDecisions();
+                else { alert(r.data && r.data.error ? r.data.error : 'Ошибка'); btn.disabled = false; }
+              }).catch(function() { btn.disabled = false; });
+            });
+          });
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

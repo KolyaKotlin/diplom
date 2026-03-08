@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Восстановление пароля — Сервис рациональных решений</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-left">
+      <div class="auth-left-content animate-in">
+        <h2>Сервис принятия рациональных решений</h2>
+        <p>Восстановите доступ к аккаунту, введя email, указанный при регистрации.</p>
+      </div>
+    </div>
+
+    <div class="auth-right">
+      <div class="auth-box animate-in delay-1">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+          <a href="login.html" class="back-link" style="margin:0;">&larr; Назад к входу</a>
+          <button class="theme-toggle" id="themeToggle" title="Сменить тему">&#9790;</button>
+        </div>
+        <h1>Восстановление пароля</h1>
+        <p class="sub">Введите email, чтобы получить код</p>
+
+        <div id="step1">
+          <form class="auth-form" id="emailForm">
+            <div class="field">
+              <label for="email">Email</label>
+              <input type="email" id="email" placeholder="example@mail.ru" required>
+            </div>
+            <button type="submit" class="btn btn-primary" id="sendBtn">Получить код</button>
+          </form>
+        </div>
+
+        <div id="step2" style="display:none;">
+          <form class="auth-form" id="resetForm" autocomplete="off">
+            <div class="field">
+              <label for="code">Код из письма</label>
+              <input type="text" id="code" placeholder="6-значный код" maxlength="6" required autocomplete="one-time-code" inputmode="numeric">
+            </div>
+            <div class="field">
+              <label for="newPassword">Новый пароль</label>
+              <input type="password" id="newPassword" placeholder="Не менее 6 символов" minlength="6" required autocomplete="new-password">
+            </div>
+            <div class="field">
+              <label for="confirmPassword">Подтверждение пароля</label>
+              <input type="password" id="confirmPassword" required autocomplete="new-password">
+              <p class="error-msg" id="passwordError" style="display:none;">Пароли не совпадают</p>
+            </div>
+            <button type="submit" class="btn btn-primary" id="resetBtn" disabled>Сменить пароль</button>
+          </form>
+        </div>
+
+        <p class="auth-footer-text">
+          Вспомнили пароль? <a href="login.html">Войти</a>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/main.js?v=4"></script>
+  <script>
+    (function() {
+      var savedEmail = '';
+      var emailForm = document.getElementById('emailForm');
+      var resetForm = document.getElementById('resetForm');
+      var sendBtn = document.getElementById('sendBtn');
+      var resetBtn = document.getElementById('resetBtn');
+      var newPw = document.getElementById('newPassword');
+      var confirmPw = document.getElementById('confirmPassword');
+      var pwError = document.getElementById('passwordError');
+
+      function checkPw() {
+        var match = newPw.value && newPw.value === confirmPw.value;
+        pwError.style.display = (newPw.value && confirmPw.value && !match) ? 'block' : 'none';
+        resetBtn.disabled = !(match && newPw.value.length >= 6 && document.getElementById('code').value.length >= 4);
+      }
+      [newPw, confirmPw, document.getElementById('code')].forEach(function(el) {
+        el.addEventListener('input', checkPw);
+      });
+
+      emailForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        savedEmail = document.getElementById('email').value.trim();
+        if (!savedEmail) return;
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Отправка...';
+        apiPost('/api/forgot-password', { email: savedEmail }).then(function(res) {
+          if (res.data && res.data.error) {
+            showToast(res.data.error);
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Получить код';
+            return;
+          }
+          document.getElementById('step1').style.display = 'none';
+          document.getElementById('step2').style.display = 'block';
+          document.querySelector('.sub').textContent = 'Код отправлен на ' + savedEmail;
+        }).catch(function() {
+          showToast('Ошибка соединения');
+          sendBtn.disabled = false;
+          sendBtn.textContent = 'Получить код';
+        });
+      });
+
+      resetForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (resetBtn.disabled) return;
+        resetBtn.disabled = true;
+        resetBtn.textContent = 'Сохранение...';
+        apiPost('/api/reset-password', {
+          email: savedEmail,
+          code: document.getElementById('code').value.trim(),
+          password: newPw.value
+        }).then(function(res) {
+          if (res.data.ok) {
+            showToast('Пароль успешно изменён!');
+            setTimeout(function() { window.location.href = 'login.html'; }, 1500);
+          } else {
+            showToast(res.data.error || 'Ошибка');
+            resetBtn.disabled = false;
+            resetBtn.textContent = 'Сменить пароль';
+          }
+        }).catch(function() {
+          showToast('Ошибка соединения');
+          resetBtn.disabled = false;
+          resetBtn.textContent = 'Сменить пароль';
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Оценка решения</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .respond-page { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:4rem 1.5rem 1.5rem; background:var(--bg-page); }
+    .respond-card { width:100%; max-width:36rem; background:var(--bg-card); border-radius:1.25rem; border:1px solid var(--border); padding:2.5rem 2rem; box-shadow:var(--shadow-md); }
+    .respond-author { background:var(--primary-50); border:1px solid var(--primary-100); border-radius:0.75rem; padding:0.875rem 1rem; font-size:0.9375rem; margin-bottom:1.5rem; line-height:1.6; }
+    .respond-title { font-size:1.375rem; font-weight:700; margin-bottom:0.5rem; color:var(--text); }
+    .respond-desc { color:var(--text-muted); font-size:0.9375rem; margin-bottom:1.5rem; }
+    .alt-block { background:var(--bg-page); border:1px solid var(--border); border-radius:0.75rem; padding:1.25rem; margin-bottom:1rem; transition:box-shadow 0.2s; }
+    .alt-block:hover { box-shadow:var(--shadow-sm); }
+    .alt-name { font-weight:600; font-size:1rem; margin-bottom:0.75rem; color:var(--text); }
+    .crit-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.625rem; padding:0.25rem 0; }
+    .crit-name { font-size:0.875rem; color:var(--text-muted); }
+    .stars { display:flex; gap:0.25rem; }
+    .star { width:1.75rem; height:1.75rem; cursor:pointer; font-size:1.375rem; color:var(--border); transition:color 0.15s, transform 0.15s; user-select:none; }
+    .star:hover { transform:scale(1.25); }
+    .star.active { color:#f59e0b; }
+    .scale-btn { min-width:2.5rem; height:2rem; padding:0 0.5rem; font-size:0.9375rem; font-weight:600; border:1px solid var(--border); border-radius:0.5rem; background:var(--bg-card); color:var(--text); cursor:pointer; transition:all 0.15s; }
+    .scale-btn:hover { border-color:var(--primary); color:var(--primary); }
+    .scale-btn.active { background:var(--primary); border-color:var(--primary); color:#fff; }
+    .scale-slider { width:100%; margin:0.5rem 0; }
+    .scale-val { font-size:0.875rem; font-weight:600; color:var(--primary); min-width:2.5rem; text-align:right; }
+    .respond-done { text-align:center; padding:2rem 0; }
+    .respond-done h2 { font-size:1.25rem; margin-bottom:0.5rem; color:var(--text); }
+    .respond-done p { color:var(--text-muted); }
+    .page-top-bar { display:flex; align-items:center; justify-content:space-between; padding:1rem 1.5rem; position:fixed; top:0; left:0; right:0; z-index:10; background:var(--bg-page); border-bottom:1px solid var(--border); }
+    .page-top-bar .nav-links { display:flex; align-items:center; gap:1rem; }
+    .page-top-bar .nav-links a { font-size:0.9375rem; color:var(--primary); text-decoration:none; font-weight:500; }
+    .page-top-bar .nav-links a:hover { text-decoration:underline; }
+    .respond-done .back-links { margin-top:1.5rem; display:flex; flex-wrap:wrap; gap:0.75rem; justify-content:center; }
+    .respond-done .back-links a { font-size:0.9375rem; color:var(--primary); text-decoration:none; }
+    .respond-done .back-links a:hover { text-decoration:underline; }
+  </style>
+</head>
+<body>
+  <div class="page-top-bar">
+    <div class="nav-links"><a href="feed.html">&larr; Лента</a><a href="dashboard.html">Главная</a></div>
+    <button class="theme-toggle" id="themeToggle" title="Сменить тему">&#9790;</button>
+  </div>
+  <div class="respond-page">
+    <div class="respond-card animate-in" id="respondCard">
+      <p style="text-align:center;color:var(--text-muted);">Загрузка...</p>
+    </div>
+  </div>
+  <script src="js/main.js?v=4"></script>
+  <script>
+    var slug = new URLSearchParams(window.location.search).get('id');
+    if (!slug) { document.getElementById('respondCard').innerHTML = '<p style="text-align:center;color:var(--text-muted);">Не указано решение</p><div class="back-links" style="margin-top:1rem;justify-content:center;"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>'; }
+    else { loadDecision(); }
+
+    var countdownInterval;
+
+    function loadDecision() {
+      apiGet('/api/decisions/' + slug).then(function(res) {
+        if (res.status !== 200) { document.getElementById('respondCard').innerHTML = '<p style="text-align:center;">Не найдено</p><div class="back-links" style="margin-top:1rem;justify-content:center;"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>'; return; }
+        var d = res.data.decision;
+        var author = d.author.lastName + ' ' + d.author.firstName;
+        document.title = author + ' — ' + d.title;
+
+        var canSeeResults = (d.showResults === 'always') || !d.isActive;
+        if (d.hasResponded && canSeeResults) {
+          window.location.replace('dec-results.html?id=' + slug);
+          return;
+        }
+
+        if (!d.isActive) {
+          document.getElementById('respondCard').innerHTML = '<div class="respond-done"><h2>Сбор ответов завершён</h2><p>Спасибо за интерес!</p><div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div></div>';
+          return;
+        }
+
+        var html = '<div class="respond-author"><strong>' + esc(author) + '</strong> предлагает вам помочь решить:</div>' +
+          '<h1 class="respond-title">' + esc(d.title) + '</h1>' +
+          (d.description ? '<p class="respond-desc">' + esc(d.description) + '</p>' : '');
+
+        if (d.deadline) {
+          html += '<div style="margin-bottom:1.25rem;" id="countdownWrap">' + renderCountdown(d.deadline) + '</div>';
+        }
+
+        var scaleMax = d.scaleMax || 5;
+        d.alternatives.forEach(function(alt) {
+          html += '<div class="alt-block"><div class="alt-name">' + esc(alt.name) + '</div>';
+          d.criteria.forEach(function(crit) {
+            var key = alt.id + '_' + crit.id;
+            html += '<div class="crit-row" data-key="' + key + '"><span class="crit-name">' + esc(crit.name) + '</span>';
+            if (scaleMax === 3 || scaleMax === 5) {
+              html += '<div class="stars" data-key="' + key + '">';
+              for (var s = 1; s <= scaleMax; s++) {
+                html += '<span class="star" data-val="' + s + '">&#9733;</span>';
+              }
+              html += '</div>';
+            } else if (scaleMax === 10) {
+              html += '<div class="scale-slider-wrap" style="display:flex;align-items:center;gap:0.5rem;"><input type="range" class="scale-slider" min="1" max="10" value="5" data-key="' + key + '"><span class="scale-val" data-key="' + key + '">5</span></div>';
+            } else if (scaleMax === 100) {
+              html += '<div class="scale-slider-wrap" style="display:flex;align-items:center;gap:0.5rem;"><input type="range" class="scale-slider" min="1" max="100" value="50" data-key="' + key + '"><span class="scale-val" data-key="' + key + '">50</span></div>';
+            } else {
+              html += '<div class="stars" data-key="' + key + '">';
+              for (var s = 1; s <= 5; s++) html += '<span class="star" data-val="' + s + '">&#9733;</span>';
+              html += '</div>';
+            }
+            html += '</div>';
+          });
+          html += '</div>';
+        });
+
+        html += '<button class="btn btn-primary" style="width:100%;margin-top:0.75rem;" id="respondSubmit" disabled>Отправить оценки</button>';
+        document.getElementById('respondCard').innerHTML = html;
+
+        if (d.deadline) {
+          countdownInterval = setInterval(function() {
+            var el = document.getElementById('countdownWrap');
+            if (el) el.innerHTML = renderCountdown(d.deadline);
+            if (new Date(d.deadline) <= new Date()) {
+              clearInterval(countdownInterval);
+              document.getElementById('respondCard').innerHTML =
+                '<div class="respond-done"><h2>Сбор ответов завершён</h2><p>Время вышло.</p><div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div></div>';
+            }
+          }, 1000);
+        }
+
+        var scores = {};
+        document.querySelectorAll('.stars').forEach(function(group) {
+          var key = group.dataset.key;
+          group.querySelectorAll('.star').forEach(function(star) {
+            star.addEventListener('click', function() {
+              var val = parseInt(star.dataset.val);
+              scores[key] = val;
+              group.querySelectorAll('.star').forEach(function(s, i) {
+                s.classList.toggle('active', i < val);
+              });
+              checkReady();
+            });
+            star.addEventListener('mouseenter', function() {
+              var val = parseInt(star.dataset.val);
+              group.querySelectorAll('.star').forEach(function(s, i) {
+                s.style.color = i < val ? '#f59e0b' : '';
+              });
+            });
+            star.addEventListener('mouseleave', function() {
+              group.querySelectorAll('.star').forEach(function(s, i) {
+                s.style.color = '';
+              });
+            });
+          });
+        });
+        document.querySelectorAll('.scale-slider').forEach(function(slider) {
+          var key = slider.dataset.key;
+          var valEl = document.querySelector('.scale-val[data-key="' + key + '"]');
+          slider.addEventListener('input', function() {
+            var val = parseInt(slider.value);
+            scores[key] = val;
+            if (valEl) valEl.textContent = val;
+            checkReady();
+          });
+          scores[key] = parseInt(slider.value);
+          if (valEl) valEl.textContent = slider.value;
+        });
+        setTimeout(checkReady, 0);
+
+        var totalNeeded = d.alternatives.length * d.criteria.length;
+        function checkReady() {
+          document.getElementById('respondSubmit').disabled = Object.keys(scores).length < totalNeeded;
+        }
+
+        document.getElementById('respondSubmit').addEventListener('click', function() {
+          var btn = this; btn.disabled = true; btn.textContent = 'Отправка...';
+          apiPost('/api/decisions/' + slug + '/respond', { scores: scores }).then(function(res) {
+            if (res.status === 403 && res.data.blocked) {
+              document.getElementById('respondCard').innerHTML =
+                '<div class="respond-done"><h2 style="color:#dc2626;">Аккаунт заблокирован</h2><p style="color:var(--text-muted);">Оценка недоступна.</p><div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div></div>';
+              return;
+            }
+            if (res.data.ok) {
+              if (countdownInterval) clearInterval(countdownInterval);
+              var sr = d.showResults || 'always';
+              var linkHtml = (sr === 'always') ? '<a href="dec-results.html?id=' + slug + '" class="btn btn-outline" style="margin-top:1rem;">Посмотреть результаты</a>' :
+                (sr === 'after') ? '<p style="color:var(--text-muted);margin-top:0.5rem;">Результаты будут доступны после завершения.</p>' : '';
+              document.getElementById('respondCard').innerHTML =
+                '<div class="respond-done"><h2>Спасибо за вашу оценку!</h2><p>Ваши ответы сохранены.</p>' + linkHtml + '<div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div></div>';
+            } else {
+              showToast(res.data.error);
+              btn.disabled = false; btn.textContent = 'Отправить оценки';
+            }
+          });
+        });
+      });
+    }
+
+    function esc(s) { var d = document.createElement('div'); d.appendChild(document.createTextNode(s || '')); return d.innerHTML; }
+  </script>
+</body>
+</html>

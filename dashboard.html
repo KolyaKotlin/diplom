@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Дашборд — Сервис рациональных решений</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide-static@0.378.0/font/lucide.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <!-- Сайдбар -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-brand">Сервис решений</span>
+        <button class="sidebar-close" id="sidebarClose">&times;</button>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="feed.html" class="nav-item">
+          <i class="lucide-rss"></i> Лента
+        </a>
+        <a href="#" class="nav-item active" data-page="home">
+          <i class="lucide-layout-dashboard"></i> Главная
+        </a>
+        <a href="#" class="nav-item" data-page="decisions">
+          <i class="lucide-scale"></i> Мои решения
+        </a>
+        <a href="#" class="nav-item" data-page="polls">
+          <i class="lucide-vote"></i> Мои голосования
+        </a>
+        <a href="#" class="nav-item" data-page="profile">
+          <i class="lucide-user"></i> Профиль
+        </a>
+        <a href="admin.html" class="nav-item" id="adminNavItem" style="display:none;">
+          <i class="lucide-shield-check"></i> Админка
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <button class="nav-item logout-btn" id="logoutBtn">
+          <i class="lucide-log-out"></i> Выйти
+        </button>
+      </div>
+    </aside>
+
+    <!-- Основное содержимое -->
+    <div class="main">
+      <header class="main-header">
+        <button class="burger" id="burgerBtn">
+          <span></span><span></span><span></span>
+        </button>
+        <h2 class="main-header-title" id="pageTitle">Главная</h2>
+        <button class="theme-toggle" id="themeToggle" title="Сменить тему">&#9790;</button>
+        <div class="main-header-user" id="headerUser">...</div>
+      </header>
+
+      <div class="main-content" id="mainContent">
+        <!-- Контент подставляется через JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Модалка создания голосования -->
+  <div class="modal-overlay" id="modalOverlay" style="display:none;">
+    <div class="modal animate-in">
+      <div class="modal-header">
+        <h3 id="modalTitle">Новое голосование</h3>
+        <button class="modal-close" id="modalClose">&times;</button>
+      </div>
+      <form id="createPollForm">
+        <input type="hidden" id="pollSlugEdit" value="">
+        <div class="field">
+          <label for="pollTitle">Тема</label>
+          <input type="text" id="pollTitle" placeholder="Например: Куда идём на обед?" required>
+        </div>
+        <div class="field">
+          <label for="pollDesc">Описание (необязательно)</label>
+          <input type="text" id="pollDesc" placeholder="Дополнительные пояснения">
+        </div>
+        <div class="field">
+          <label>Варианты ответов</label>
+          <div id="optionsContainer">
+            <div class="option-row"><input type="text" class="poll-option" placeholder="Вариант 1" required><button type="button" class="remove-option">&times;</button></div>
+            <div class="option-row"><input type="text" class="poll-option" placeholder="Вариант 2" required><button type="button" class="remove-option">&times;</button></div>
+          </div>
+          <button type="button" class="btn-text" id="addOptionBtn">+ Добавить вариант</button>
+        </div>
+        <div class="modal-settings">
+          <label class="auth-checkbox">
+            <input type="checkbox" id="pollMultiple">
+            <span>Разрешить выбор нескольких вариантов</span>
+          </label>
+          <label class="auth-checkbox">
+            <input type="checkbox" id="pollAuthOnly">
+            <span>Только авторизованные пользователи</span>
+          </label>
+          <label class="auth-checkbox">
+            <input type="checkbox" id="pollShowVoters">
+            <span>Показывать имена проголосовавших</span>
+          </label>
+          <label class="auth-checkbox">
+            <input type="checkbox" id="pollAnonymous">
+            <span>Тайное (анонимное) голосование</span>
+          </label>
+        </div>
+        <div class="field">
+          <label for="pollMaxVotes">Лимит голосов (0 = без ограничения)</label>
+          <input type="text" id="pollMaxVotes" placeholder="0" value="0">
+        </div>
+        <div class="field">
+          <label for="pollShowResults">Показывать результаты</label>
+          <select id="pollShowResults">
+            <option value="always">Сразу после голосования</option>
+            <option value="after">После завершения</option>
+            <option value="author_only">Только автору</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="pollDeadline">Дедлайн (необязательно)</label>
+          <input type="datetime-local" id="pollDeadline">
+        </div>
+        <label class="auth-checkbox" style="margin-top:0.5rem;">
+          <input type="checkbox" id="pollIsPublic">
+          <span>Опубликовать в ленте</span>
+        </label>
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem;">Сохранить</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Модалка «Поделиться» -->
+  <div class="modal-overlay" id="shareOverlay" style="display:none;">
+    <div class="modal animate-in">
+      <div class="modal-header">
+        <h3>Поделиться</h3>
+        <button class="modal-close" id="shareClose">&times;</button>
+      </div>
+      <div class="share-body">
+        <p class="share-preview-text" id="sharePreviewText"></p>
+        <div class="field">
+          <label>Ссылка</label>
+          <div class="copy-row">
+            <input type="text" id="shareLink" readonly>
+            <button type="button" class="btn btn-primary" id="copyLinkBtn">Копировать</button>
+          </div>
+        </div>
+        <div class="qr-block" id="qrBlock">
+          <img id="qrImage" alt="QR">
+        </div>
+        <button type="button" class="btn btn-outline" id="downloadQrBtn" style="width:100%;margin-top:0.5rem;">Скачать QR-код</button>
+        <div class="share-socials" id="shareSocials">
+          <button class="share-social-btn tg" id="shareTg" title="Telegram"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg></button>
+          <button class="share-social-btn vk" id="shareVk" title="ВКонтакте"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M15.684 0H8.316C1.592 0 0 1.592 0 8.316v7.368C0 22.408 1.592 24 8.316 24h7.368C22.408 24 24 22.408 24 15.684V8.316C24 1.592 22.391 0 15.684 0zm3.692 17.123h-1.744c-.66 0-.862-.525-2.049-1.714-1.033-1.01-1.49-1.135-1.744-1.135-.356 0-.458.102-.458.593v1.575c0 .424-.135.678-1.253.678-1.846 0-3.896-1.12-5.339-3.202-2.17-3.042-2.763-5.32-2.763-5.785 0-.254.102-.491.593-.491h1.744c.44 0 .61.203.779.677.864 2.49 2.303 4.675 2.896 4.675.22 0 .322-.102.322-.66V9.721c-.068-1.186-.695-1.287-.695-1.71 0-.203.17-.407.44-.407h2.744c.373 0 .508.203.508.643v3.473c0 .372.17.508.271.508.22 0 .407-.136.813-.542 1.254-1.406 2.151-3.574 2.151-3.574.119-.254.322-.491.763-.491h1.744c.525 0 .644.27.525.643-.22 1.017-2.354 4.031-2.354 4.031-.186.305-.254.44 0 .78.186.254.796.779 1.203 1.253.745.847 1.32 1.558 1.473 2.049.17.49-.085.744-.576.744z"/></svg></button>
+          <button class="share-social-btn wa" id="shareWa" title="WhatsApp"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg></button>
+          <button class="share-social-btn email-share" id="shareEmail" title="Email"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/main.js?v=4"></script>
+  <script src="js/dashboard.js?v=8"></script>
+</body>
+</html>

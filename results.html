@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Результаты голосования</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <style>
+    .results-page { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:4rem 1.5rem 1.5rem; background:var(--bg-page); }
+    .results-card { width:100%; max-width:36rem; background:var(--bg-card); border-radius:1.25rem; border:1px solid var(--border); padding:2.5rem 2rem; box-shadow:var(--shadow-md); }
+    .results-title { font-size:1.375rem; font-weight:700; margin-bottom:0.5rem; color:var(--text); }
+    .results-meta { font-size:0.875rem; color:var(--text-muted); margin-bottom:2rem; }
+    .result-row { margin-bottom:1.25rem; }
+    .result-head { display:flex; justify-content:space-between; margin-bottom:0.375rem; font-size:0.9375rem; }
+    .result-text { font-weight:500; color:var(--text); }
+    .result-pct { color:var(--primary); font-weight:600; }
+    .result-bar-bg { height:0.625rem; background:var(--primary-50); border-radius:0.375rem; overflow:hidden; }
+    .result-bar { height:100%; background:var(--primary); border-radius:0.375rem; transition:width 0.8s cubic-bezier(0.4,0,0.2,1); }
+    .results-footer { margin-top:2rem; text-align:center; display:flex; flex-wrap:wrap; gap:1rem; justify-content:center; }
+    .results-footer a { font-size:0.9375rem; color:var(--primary); text-decoration:none; font-weight:500; }
+    .results-footer a:hover { text-decoration:underline; }
+    .access-msg { text-align:center; padding:2rem 0; color:var(--text-muted); }
+    .page-top-bar { display:flex; align-items:center; justify-content:flex-end; padding:1rem 1.5rem; position:fixed; top:0; right:0; z-index:10; }
+    .export-bar { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:2rem; padding-top:1.5rem; border-top:1px solid var(--border); }
+    .export-bar .btn { font-size:0.8125rem; padding:0.5rem 1rem; }
+    .export-icon { margin-right:0.25rem; }
+    .poll-winner { background:var(--hero-gradient); border-radius:1rem; padding:1.25rem; text-align:center; color:#fff; margin-bottom:1.5rem; position:relative; overflow:hidden; }
+    .poll-winner::before { content:''; position:absolute; top:-50%; right:-50%; width:100%; height:100%; background:radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%); }
+    .poll-winner-label { font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; opacity:0.8; margin-bottom:0.25rem; }
+    .poll-winner-name { font-size:1.25rem; font-weight:800; }
+    .poll-winner-votes { font-size:0.875rem; opacity:0.9; margin-top:0.25rem; }
+  </style>
+</head>
+<body>
+  <div class="page-top-bar" style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;position:fixed;top:0;left:0;right:0;z-index:10;background:var(--bg-page);border-bottom:1px solid var(--border);">
+    <div style="display:flex;gap:1rem;"><a href="feed.html" style="font-size:0.9375rem;color:var(--primary);text-decoration:none;">&larr; Лента</a><a href="dashboard.html" style="font-size:0.9375rem;color:var(--primary);text-decoration:none;">Главная</a></div>
+    <button class="theme-toggle" id="themeToggle" title="Сменить тему">&#9790;</button>
+  </div>
+  <div class="results-page">
+    <div class="results-card animate-in" id="resultsCard">
+      <p style="text-align:center;color:var(--text-muted);">Загрузка...</p>
+    </div>
+  </div>
+  <script src="js/main.js?v=4"></script>
+  <script>
+    var slug = new URLSearchParams(window.location.search).get('id');
+    if (!slug) { document.getElementById('resultsCard').innerHTML = '<p style="text-align:center;">Не указано</p><div style="margin-top:1rem;text-align:center;"><a href="feed.html" style="margin-right:1rem;">В ленту</a><a href="dashboard.html">На главную</a></div>'; }
+    else {
+      apiGet('/api/polls/' + slug + '/results').then(function(res) {
+        if (res.status === 403) {
+          document.getElementById('resultsCard').innerHTML = '<div class="access-msg">' + esc(res.data.error) + '</div><div style="margin-top:1rem;text-align:center;"><a href="feed.html" style="margin-right:1rem;">В ленту</a><a href="dashboard.html">На главную</a></div>';
+          return;
+        }
+        if (res.status !== 200) { document.getElementById('resultsCard').innerHTML = '<p style="text-align:center;">Не найдено</p><div style="margin-top:1rem;text-align:center;"><a href="feed.html" style="margin-right:1rem;">В ленту</a><a href="dashboard.html">На главную</a></div>'; return; }
+        var d = res.data;
+        var total = d.results.reduce(function(s, r) { return s + r.votes; }, 0) || 1;
+        var html = '<h1 class="results-title">' + esc(d.title) + '</h1>' +
+          '<p class="results-meta">Проголосовало: ' + d.totalVoters + '</p>';
+
+        var maxVotes = Math.max.apply(null, d.results.map(function(r) { return r.votes; }));
+        if (maxVotes > 0) {
+          var pollWinners = d.results.filter(function(r) { return r.votes === maxVotes; });
+          if (pollWinners.length === 1) {
+            html += '<div class="poll-winner animate-in"><div class="poll-winner-label">Лидер голосования</div><div class="poll-winner-name">' + esc(pollWinners[0].text) + '</div><div class="poll-winner-votes">' + maxVotes + ' гол. (' + Math.round(maxVotes/total*100) + '%)</div></div>';
+          } else {
+            var pnames = pollWinners.map(function(w) { return esc(w.text); }).join(', ');
+            html += '<div class="poll-winner animate-in"><div class="poll-winner-label">Лидеры голосования (равный результат)</div><div class="poll-winner-name">' + pnames + '</div><div class="poll-winner-votes">' + maxVotes + ' гол. каждый</div></div>';
+          }
+        }
+
+        d.results.forEach(function(r) {
+          var pct = Math.round(r.votes / total * 100);
+          html += '<div class="result-row"><div class="result-head"><span class="result-text">' + esc(r.text) + '</span><span class="result-pct">' + pct + '% (' + r.votes + ')</span></div>' +
+            '<div class="result-bar-bg"><div class="result-bar" style="width:0%;"></div></div>';
+          if (d.showVoters && r.voters && r.voters.length) {
+            html += '<div style="margin-top:0.375rem;display:flex;flex-wrap:wrap;gap:0.25rem;">';
+            r.voters.forEach(function(name) {
+              html += '<span style="background:var(--primary-50);border:1px solid var(--primary-100);border-radius:1rem;padding:0.125rem 0.5rem;font-size:0.75rem;color:var(--text-muted);">' + esc(name) + '</span>';
+            });
+            html += '</div>';
+          }
+          html += '</div>';
+        });
+        html += '<canvas id="pollChart" style="margin-top:2rem;max-height:280px;"></canvas>';
+
+        // Export buttons
+        html += '<div class="export-bar">' +
+          '<span style="font-size:0.8125rem;font-weight:600;color:var(--text-muted);align-self:center;margin-right:0.25rem;">Экспорт:</span>' +
+          '<a href="/api/polls/' + slug + '/export/pdf" class="btn btn-outline"><span class="export-icon">&#128196;</span>PDF</a>' +
+          '<a href="/api/polls/' + slug + '/export/docx" class="btn btn-outline"><span class="export-icon">&#128209;</span>Word</a>' +
+          '<a href="/api/polls/' + slug + '/export/xlsx" class="btn btn-outline"><span class="export-icon">&#128202;</span>Excel</a>' +
+          '<a href="/api/polls/' + slug + '/export/txt" class="btn btn-outline"><span class="export-icon">&#128221;</span>Текст</a>' +
+          '</div>';
+
+        html += '<div class="results-footer"><a href="vote.html?id=' + slug + '">&larr; К голосованию</a><a href="feed.html">В ленту</a><a href="dashboard.html">На главную</a></div>';
+        document.getElementById('resultsCard').innerHTML = html;
+
+        setTimeout(function() {
+          var bars = document.querySelectorAll('.result-bar');
+          d.results.forEach(function(r, i) {
+            var pct = Math.round(r.votes / total * 100);
+            if (bars[i]) bars[i].style.width = pct + '%';
+          });
+        }, 100);
+
+        var labels = d.results.map(function(r) { return r.text; });
+        var data = d.results.map(function(r) { return r.votes; });
+        var colors = ['#2563eb','#3b82f6','#60a5fa','#93c5fd','#bfdbfe','#dbeafe','#1d4ed8','#1e40af'];
+        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        new Chart(document.getElementById('pollChart'), {
+          type: 'doughnut',
+          data: { labels: labels, datasets: [{ data: data, backgroundColor: labels.map(function(_,i) { return colors[i%colors.length]; }), borderColor: isDark ? '#1e293b' : '#fff', borderWidth: 2 }] },
+          options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: isDark ? '#f1f5f9' : '#0f172a', padding: 16 } } } }
+        });
+      });
+    }
+    function esc(s) { var d = document.createElement('div'); d.appendChild(document.createTextNode(s || '')); return d.innerHTML; }
+  </script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Лента голосований</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <link rel="stylesheet" href="css/feed.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide-static@0.378.0/font/lucide.min.css">
+</head>
+<body>
+  <div class="app">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-brand">Сервис решений</span>
+        <button class="sidebar-close" id="sidebarClose">&times;</button>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="feed.html" class="nav-item active">
+          <i class="lucide-rss"></i> Лента
+        </a>
+        <a href="dashboard.html" class="nav-item">
+          <i class="lucide-layout-dashboard"></i> Главная
+        </a>
+        <a href="dashboard.html#decisions" class="nav-item">
+          <i class="lucide-scale"></i> Мои решения
+        </a>
+        <a href="dashboard.html#polls" class="nav-item">
+          <i class="lucide-vote"></i> Мои голосования
+        </a>
+        <a href="dashboard.html#profile" class="nav-item">
+          <i class="lucide-user"></i> Профиль
+        </a>
+      </nav>
+      <div class="sidebar-footer" id="sidebarFooter"></div>
+    </aside>
+
+    <div class="main">
+      <header class="main-header">
+        <button class="burger" id="burgerBtn">
+          <span></span><span></span><span></span>
+        </button>
+        <h2 class="main-header-title">Лента</h2>
+        <button class="theme-toggle" id="themeToggle" title="Сменить тему">&#9790;</button>
+        <div class="main-header-user" id="headerUser">...</div>
+      </header>
+
+      <div class="main-content" style="max-width:640px;">
+        <div id="feedBody"></div>
+        <button class="feed-load-more" id="feedLoadMore" style="margin-top:0.5rem;">Загрузить ещё</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/main.js?v=4"></script>
+  <script>
+    (function(){
+      var burger = document.getElementById('burgerBtn');
+      var sidebar = document.getElementById('sidebar');
+      var overlay = document.getElementById('sidebarOverlay');
+      var closeBtn = document.getElementById('sidebarClose');
+
+      function openSidebar() { sidebar.classList.add('open'); overlay.classList.add('show'); }
+      function closeSidebar() { sidebar.classList.remove('open'); overlay.classList.remove('show'); }
+      burger.addEventListener('click', openSidebar);
+      overlay.addEventListener('click', closeSidebar);
+      closeBtn.addEventListener('click', closeSidebar);
+
+      fetch('/api/me').then(function(r){ return r.json(); }).then(function(d){
+        var hu = document.getElementById('headerUser');
+        var sf = document.getElementById('sidebarFooter');
+        if (d.user) {
+          hu.textContent = (d.user.firstName || '') + ' ' + (d.user.lastName || '');
+          sf.innerHTML = '<a href="/api/logout" class="nav-item logout-btn"><i class="lucide-log-out"></i> Выйти</a>';
+        } else {
+          hu.innerHTML = '<a href="login.html" style="color:var(--primary);font-weight:600;text-decoration:none;">Войти</a>';
+          sf.innerHTML = '<a href="login.html" class="nav-item"><i class="lucide-log-in"></i> Войти</a>';
+        }
+      }).catch(function(){
+        document.getElementById('headerUser').innerHTML =
+          '<a href="login.html" style="color:var(--primary);font-weight:600;text-decoration:none;">Войти</a>';
+        document.getElementById('sidebarFooter').innerHTML =
+          '<a href="login.html" class="nav-item"><i class="lucide-log-in"></i> Войти</a>';
+      });
+    })();
+  </script>
+  <script src="js/feed.js?v=7"></script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Голосование</title>
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="" id="ogTitle">
+  <meta property="og:description" content="" id="ogDesc">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .vote-page { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:4rem 1.5rem 1.5rem; background:var(--bg-page); }
+    .vote-card { width:100%; max-width:32rem; background:var(--bg-card); border-radius:1.25rem; border:1px solid var(--border); padding:2.5rem 2rem; box-shadow:var(--shadow-md); }
+    .vote-author { background:var(--primary-50); border:1px solid var(--primary-100); border-radius:0.75rem; padding:0.875rem 1rem; font-size:0.9375rem; margin-bottom:1.5rem; line-height:1.6; }
+    .vote-title { font-size:1.375rem; font-weight:700; margin-bottom:0.25rem; color:var(--text); }
+    .vote-desc { color:var(--text-muted); font-size:0.9375rem; margin-bottom:1.5rem; }
+    .vote-options { display:flex; flex-direction:column; gap:0.625rem; margin-bottom:1.5rem; }
+    .vote-option { display:flex; align-items:center; gap:0.75rem; padding:0.875rem 1rem; border:1.5px solid var(--border); border-radius:0.75rem; cursor:pointer; transition:all 0.15s; background:var(--bg-card); }
+    .vote-option:hover { border-color:var(--primary-200); background:var(--primary-50); transform:translateY(-1px); }
+    .vote-option.selected { border-color:var(--primary); background:var(--primary-50); }
+    .vote-option input { display:none; }
+    .vote-check { width:1.25rem; height:1.25rem; border-radius:50%; border:2px solid var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
+    .vote-option.selected .vote-check { border-color:var(--primary); background:var(--primary); }
+    .vote-option.selected .vote-check::after { content:''; width:6px; height:6px; background:#fff; border-radius:50%; }
+    .vote-option-text { font-size:0.9375rem; font-weight:500; color:var(--text); }
+    .vote-done { text-align:center; padding:2rem 0; }
+    .vote-done h2 { font-size:1.25rem; margin-bottom:0.5rem; color:var(--text); }
+    .vote-done p { color:var(--text-muted); }
+    .vote-auth-msg { background:var(--primary-50); border:1px solid var(--primary-100); border-radius:0.75rem; padding:1rem; text-align:center; font-size:0.9375rem; color:var(--text); }
+    .vote-auth-msg a { font-weight:600; }
+    .page-top-bar { display:flex; align-items:center; justify-content:space-between; padding:1rem 1.5rem; position:fixed; top:0; left:0; right:0; z-index:10; background:var(--bg-page); border-bottom:1px solid var(--border); }
+    .page-top-bar .nav-links { display:flex; align-items:center; gap:1rem; }
+    .page-top-bar .nav-links a { font-size:0.9375rem; color:var(--primary); text-decoration:none; font-weight:500; }
+    .page-top-bar .nav-links a:hover { text-decoration:underline; }
+    .vote-done .back-links { margin-top:1.5rem; display:flex; flex-wrap:wrap; gap:0.75rem; justify-content:center; }
+    .vote-done .back-links a { font-size:0.9375rem; color:var(--primary); text-decoration:none; }
+    .vote-done .back-links a:hover { text-decoration:underline; }
+  </style>
+</head>
+<body>
+  <div class="page-top-bar">
+    <div class="nav-links"><a href="feed.html">&larr; Лента</a><a href="dashboard.html">Главная</a></div>
+    <button class="theme-toggle" id="themeToggle" title="Сменить тему">&#9790;</button>
+  </div>
+  <div class="vote-page">
+    <div class="vote-card animate-in" id="voteCard">
+      <div id="voteLoading" style="text-align:center;color:var(--text-muted);">Загрузка...</div>
+    </div>
+  </div>
+  <script src="js/main.js?v=4"></script>
+  <script>
+    var slug = new URLSearchParams(window.location.search).get('id');
+    if (!slug) { document.getElementById('voteCard').innerHTML = '<p style="text-align:center;color:var(--text-muted);">Не найдено</p><div class="back-links" style="margin-top:1rem;justify-content:center;"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>'; }
+    else { loadPoll(); }
+
+    var countdownInterval;
+
+    function loadPoll() {
+      apiGet('/api/polls/' + slug).then(function(res) {
+        if (res.status !== 200) { document.getElementById('voteCard').innerHTML = '<p style="text-align:center;">Не найдено</p>'; return; }
+        var poll = res.data.poll;
+        var author = poll.author;
+        var authorName = author.lastName + ' ' + author.firstName;
+        document.title = authorName + ' — ' + poll.title;
+        var ogT = document.getElementById('ogTitle');
+        var ogD = document.getElementById('ogDesc');
+        if (ogT) ogT.setAttribute('content', authorName + ' предлагает проголосовать: «' + poll.title + '»');
+        if (ogD) ogD.setAttribute('content', poll.description || 'Голосование');
+
+        var canSeeResults = (poll.showResults === 'always') || !poll.isActive;
+        if (poll.hasVoted && canSeeResults) {
+          window.location.replace('results.html?id=' + slug);
+          return;
+        }
+
+        if (!poll.isActive) {
+          var canSee = poll.showResults !== 'author_only';
+          document.getElementById('voteCard').innerHTML = '<div class="vote-done"><h2>Голосование завершено</h2>' +
+            (canSee ? '<a href="results.html?id=' + slug + '" class="btn btn-outline" style="margin-top:1rem;">Результаты</a>' : '<p>Результаты доступны только автору.</p>') +
+            '<div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div></div>';
+          return;
+        }
+
+        if (poll.authOnly) {
+          apiGet('/api/me').then(function(mr) {
+            if (mr.status === 401) {
+              document.getElementById('voteCard').innerHTML = '<div class="vote-auth-msg">Для участия необходимо <a href="dashboard.html">войти</a> или <a href="register.html">зарегистрироваться</a>.</div><div class="back-links" style="margin-top:1rem;justify-content:center;"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>';
+            } else { renderVoteForm(poll, authorName); }
+          }).catch(function() { renderVoteForm(poll, authorName); });
+        } else { renderVoteForm(poll, authorName); }
+      }).catch(function() {
+        document.getElementById('voteCard').innerHTML = '<p style="text-align:center;">Не удалось загрузить голосование.</p><div class="back-links" style="margin-top:1rem;justify-content:center;"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>';
+      });
+    }
+
+    function renderVoteForm(poll, authorName) {
+      var html = '<div class="vote-author"><strong>' + esc(authorName) + '</strong> предлагает проголосовать:</div>' +
+        '<h1 class="vote-title">' + esc(poll.title) + '</h1>' +
+        (poll.description ? '<p class="vote-desc">' + esc(poll.description) + '</p>' : '');
+
+      if (poll.deadline) {
+        html += '<div style="margin-bottom:1.25rem;" id="countdownWrap">' + renderCountdown(poll.deadline) + '</div>';
+        setTimeout(function() {
+          countdownInterval = setInterval(function() {
+            var el = document.getElementById('countdownWrap');
+            if (el) el.innerHTML = renderCountdown(poll.deadline);
+            if (new Date(poll.deadline) <= new Date()) {
+              clearInterval(countdownInterval);
+              var canSee = poll.showResults !== 'author_only';
+              document.getElementById('voteCard').innerHTML = '<div class="vote-done"><h2>Голосование завершено</h2>' +
+                (canSee ? '<a href="results.html?id=' + slug + '" class="btn btn-outline" style="margin-top:1rem;">Результаты</a>' : '<p>Результаты доступны только автору.</p>') +
+                '<div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div></div>';
+            }
+          }, 1000);
+        }, 100);
+      }
+
+      html += '<div class="vote-options" id="voteOptions">';
+      poll.options.forEach(function(o) {
+        html += '<label class="vote-option" data-id="' + o.id + '">' +
+          '<input type="' + (poll.multipleChoice ? 'checkbox' : 'radio') + '" name="vote" value="' + o.id + '">' +
+          '<span class="vote-check"></span><span class="vote-option-text">' + esc(o.text) + '</span></label>';
+      });
+      html += '</div><button class="btn btn-primary" style="width:100%;" id="voteSubmit" disabled>Проголосовать</button>';
+      document.getElementById('voteCard').innerHTML = html;
+
+      document.querySelectorAll('.vote-option').forEach(function(opt) {
+        opt.addEventListener('click', function() {
+          var inp = opt.querySelector('input');
+          if (inp.type === 'radio') {
+            document.querySelectorAll('.vote-option').forEach(function(o) { o.classList.remove('selected'); });
+            opt.classList.add('selected'); inp.checked = true;
+          } else { inp.checked = !inp.checked; opt.classList.toggle('selected', inp.checked); }
+          document.getElementById('voteSubmit').disabled = !document.querySelector('.vote-option.selected');
+        });
+      });
+
+      document.getElementById('voteSubmit').addEventListener('click', function() {
+        var btn = this; btn.disabled = true; btn.textContent = 'Отправка...';
+        var ids = [];
+        document.querySelectorAll('.vote-option.selected input').forEach(function(i) { ids.push(parseInt(i.value)); });
+        apiPost('/api/polls/' + slug + '/vote', { optionIds: ids }).then(function(res) {
+          if (res.status === 403 && res.data.blocked) {
+            document.getElementById('voteCard').innerHTML = '<div class="vote-done"><h2 style="color:#dc2626;">Аккаунт заблокирован</h2><p style="color:var(--text-muted);">Голосование недоступно.</p><div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div></div>';
+            return;
+          }
+          if (res.data.ok) {
+            if (countdownInterval) clearInterval(countdownInterval);
+            var sr = poll.showResults;
+            var resultLink = (sr === 'always') ? '<a href="results.html?id=' + slug + '" class="btn btn-outline" style="margin-top:1rem;">Результаты</a>' :
+              (sr === 'after') ? '<p style="color:var(--text-muted);margin-top:0.5rem;">Результаты будут доступны после завершения.</p>' : '';
+            document.getElementById('voteCard').innerHTML = '<div class="vote-done"><h2>Спасибо за голос!</h2>' + resultLink + '<div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div></div>';
+          } else { showToast(res.data.error); btn.disabled = false; btn.textContent = 'Проголосовать'; }
+        });
+      });
+    }
+
+    function esc(s) { var d = document.createElement('div'); d.appendChild(document.createTextNode(s || '')); return d.innerHTML; }
+  </script>
+</body>
+</html>

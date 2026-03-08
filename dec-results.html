@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Результаты решения</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <style>
+    .res-page { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:4rem 1.5rem 1.5rem; background:var(--bg-page); }
+    .res-card { width:100%; max-width:44rem; min-width:0; background:var(--bg-card); border-radius:1.25rem; border:1px solid var(--border); padding:2.5rem 2rem; box-shadow:var(--shadow-md); }
+    .res-title { font-size:1.375rem; font-weight:700; margin-bottom:0.5rem; color:var(--text); }
+    .res-meta { font-size:0.875rem; color:var(--text-muted); margin-bottom:2rem; }
+    .winner { background:var(--hero-gradient); border-radius:1rem; padding:1.75rem; text-align:center; color:#fff; margin-bottom:2rem; position:relative; overflow:hidden; }
+    .winner::before { content:''; position:absolute; top:-50%; right:-50%; width:100%; height:100%; background:radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%); }
+    .winner-label { font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; opacity:0.8; margin-bottom:0.375rem; }
+    .winner-name { font-size:1.5rem; font-weight:800; }
+    .winner-score { font-size:1rem; opacity:0.9; margin-top:0.375rem; }
+    .rank-row { margin-bottom:1.25rem; }
+    .rank-head { display:flex; justify-content:space-between; margin-bottom:0.375rem; font-size:0.9375rem; }
+    .rank-text { font-weight:500; color:var(--text); }
+    .rank-val { color:var(--primary); font-weight:600; }
+    .rank-bar-bg { height:0.625rem; background:var(--primary-50); border-radius:0.375rem; overflow:hidden; }
+    .rank-bar { height:100%; background:var(--primary); border-radius:0.375rem; transition:width 0.8s cubic-bezier(0.4,0,0.2,1); }
+    .details-table-wrap { overflow-x: auto; margin-top:1.5rem; -webkit-overflow-scrolling: touch; border:1px solid var(--border); border-radius:0.75rem; }
+    .details-table { width:100%; min-width:480px; border-collapse:collapse; font-size:0.875rem; }
+    .details-table th { background:var(--primary-50); padding:0.625rem 0.75rem; text-align:center; font-weight:600; font-size:0.75rem; color:var(--text); white-space:nowrap; min-width:4.5rem; }
+    .details-table th:first-child { min-width:7rem; text-align:left; white-space:normal; }
+    .details-table td { padding:0.625rem 0.75rem; text-align:center; border-bottom:1px solid var(--border); color:var(--text); min-width:4.5rem; }
+    .details-table td:first-child { text-align:left; font-weight:600; white-space:nowrap; }
+    .details-table tr:last-child td { border-bottom:none; }
+    .star-display { color:#f59e0b; font-size:0.9375rem; }
+    .page-top-bar { display:flex; align-items:center; justify-content:space-between; padding:1rem 1.5rem; position:fixed; top:0; left:0; right:0; z-index:10; background:var(--bg-page); border-bottom:1px solid var(--border); }
+    .page-top-bar .nav-links a { font-size:0.9375rem; color:var(--primary); text-decoration:none; font-weight:500; margin-right:1rem; }
+    .page-top-bar .nav-links a:hover { text-decoration:underline; }
+    .res-footer { margin-top:2rem; padding-top:1.5rem; border-top:1px solid var(--border); display:flex; flex-wrap:wrap; gap:1rem; justify-content:center; }
+    .res-footer a { font-size:0.9375rem; color:var(--primary); text-decoration:none; font-weight:500; }
+    .res-footer a:hover { text-decoration:underline; }
+
+    .export-bar { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:2rem; padding-top:1.5rem; border-top:1px solid var(--border); }
+    .export-bar .btn { font-size:0.8125rem; padding:0.5rem 1rem; }
+    .export-icon { margin-right:0.25rem; }
+
+    .ai-review { margin-top:2rem; background:var(--primary-50); border:1px solid var(--primary-100); border-radius:0.75rem; padding:1.25rem 1.5rem; }
+    .ai-review-header { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem; }
+    .ai-review-header h3 { font-size:0.9375rem; font-weight:600; margin:0; color:var(--text); }
+    .ai-review-badge { font-size:0.6875rem; background:var(--primary); color:#fff; padding:0.125rem 0.5rem; border-radius:1rem; font-weight:600; }
+    .ai-review-text { font-size:0.9375rem; line-height:1.7; color:var(--text); }
+    .ai-review-loading { color:var(--text-muted); font-size:0.875rem; }
+    .ai-review-btn { margin-top:1.5rem; }
+  </style>
+</head>
+<body>
+  <div class="page-top-bar">
+    <div class="nav-links"><a href="feed.html">&larr; Лента</a><a href="dashboard.html">Главная</a></div>
+    <button class="theme-toggle" id="themeToggle" title="Сменить тему">&#9790;</button>
+  </div>
+  <div class="res-page">
+    <div class="res-card animate-in" id="resCard">
+      <p style="text-align:center;color:var(--text-muted);">Загрузка...</p>
+    </div>
+  </div>
+  <script src="js/main.js?v=4"></script>
+  <script>
+    var slug = new URLSearchParams(window.location.search).get('id');
+    if (!slug) { document.getElementById('resCard').innerHTML = '<p style="text-align:center;">Не указано</p><div class="res-footer"><a href="feed.html">В ленту</a><a href="dashboard.html">На главную</a></div>'; }
+    else { loadResults(); }
+
+    function loadResults() {
+      apiGet('/api/decisions/' + slug + '/results').then(function(res) {
+        if (res.status !== 200) { document.getElementById('resCard').innerHTML = '<p>Не найдено</p>'; return; }
+        var d = res.data;
+        if (d.totalResponses === 0) {
+          document.getElementById('resCard').innerHTML = '<h1 class="res-title">' + esc(d.title) + '</h1><p style="color:var(--text-muted);margin-top:1rem;">Пока никто не ответил.</p><div class="res-footer"><a href="respond.html?id=' + slug + '">К оценке</a><a href="feed.html">В ленту</a><a href="dashboard.html">На главную</a></div>';
+          return;
+        }
+        var best = d.ranking[0];
+        var bestScore = best.score;
+        var winners = d.ranking.filter(function(r) { return Math.abs(r.score - bestScore) < 0.01; });
+
+        var html = '<h1 class="res-title">' + esc(d.title) + '</h1>' +
+          '<p class="res-meta">Ответов: ' + d.totalResponses + '</p>';
+
+        var scaleMax = d.scaleMax || 5;
+        if (winners.length === 1) {
+          html += '<div class="winner animate-in"><div class="winner-label">Лучший вариант</div><div class="winner-name">' + esc(best.name) + '</div><div class="winner-score">' + best.score.toFixed(2) + ' из ' + scaleMax + '</div></div>';
+        } else {
+          var names = winners.map(function(w) { return esc(w.name); }).join(', ');
+          html += '<div class="winner animate-in"><div class="winner-label">Лучшие варианты (равный балл)</div><div class="winner-name">' + names + '</div><div class="winner-score">' + bestScore.toFixed(2) + ' из ' + scaleMax + '</div></div>';
+        }
+
+        var rankDesc = d.ranking;
+        html += '<h3 style="font-size:1rem;font-weight:600;margin-bottom:1rem;color:var(--text);">Рейтинг</h3>';
+        rankDesc.forEach(function(r, i) {
+          html += '<div class="rank-row"><div class="rank-head"><span class="rank-text">' + (i+1) + '. ' + esc(r.name) + '</span><span class="rank-val">' + r.score.toFixed(2) + '/' + scaleMax + '</span></div>' +
+            '<div class="rank-bar-bg"><div class="rank-bar" style="width:0%;"></div></div></div>';
+        });
+
+        html += '<div class="details-table-wrap"><table class="details-table"><thead><tr><th>Вариант</th>';
+        d.criteria.forEach(function(c) { html += '<th>' + esc(c.name) + '</th>'; });
+        html += '</tr></thead><tbody>';
+        rankDesc.forEach(function(r) {
+          html += '<tr><td>' + esc(r.name) + '</td>';
+          d.criteria.forEach(function(c) {
+            var avg = d.details[r.id + '_' + c.id] || 0;
+            var maxStar = Math.min(scaleMax, 5);
+            var stars = '';
+            for (var s = 1; s <= maxStar; s++) stars += '<span class="star-display">' + (s <= Math.round(avg * maxStar / scaleMax) ? '&#9733;' : '&#9734;') + '</span>';
+            html += '<td><div>' + stars + '</div><small style="color:var(--text-muted);">' + avg.toFixed(1) + '</small></td>';
+          });
+          html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+
+        // Respondent names
+        if (d.showRespondents && d.respondents && d.respondents.length) {
+          html += '<div style="margin-top:1.5rem;"><h3 style="font-size:0.9375rem;font-weight:600;color:var(--text);margin-bottom:0.5rem;">Участники</h3>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:0.375rem;">';
+          d.respondents.forEach(function(name) {
+            html += '<span style="background:var(--primary-50);border:1px solid var(--primary-100);border-radius:1rem;padding:0.25rem 0.75rem;font-size:0.8125rem;color:var(--text);">' + esc(name) + '</span>';
+          });
+          html += '</div></div>';
+        }
+
+        html += '<canvas id="decChart" style="margin-top:2rem;max-height:320px;"></canvas>';
+        html += '<canvas id="decLineChart" style="margin-top:1.5rem;max-height:280px;"></canvas>';
+
+        if (d.isAuthor) {
+          html += '<div class="ai-review-btn"><button class="btn btn-outline" id="aiReviewBtn" style="width:100%;">&#10024; ИИ-рецензия на результаты</button></div>' +
+            '<div id="aiReviewBlock" style="display:none;"></div>';
+
+          html += '<div class="export-bar" style="flex-direction:column;gap:1rem;">' +
+            '<div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">' +
+            '<span style="font-size:0.8125rem;font-weight:600;color:var(--text-muted);">Обычный экспорт:</span>' +
+            '<a href="/api/decisions/' + slug + '/export/pdf" class="btn btn-outline"><span class="export-icon">&#128196;</span>PDF</a>' +
+            '<a href="/api/decisions/' + slug + '/export/docx" class="btn btn-outline"><span class="export-icon">&#128209;</span>Word</a>' +
+            '<a href="/api/decisions/' + slug + '/export/xlsx" class="btn btn-outline"><span class="export-icon">&#128202;</span>Excel</a>' +
+            '<a href="/api/decisions/' + slug + '/export/txt" class="btn btn-outline"><span class="export-icon">&#128221;</span>Текст</a>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">' +
+            '<span style="font-size:0.8125rem;font-weight:600;color:var(--primary);">Подробный (с рецензией):</span>' +
+            '<a href="/api/decisions/' + slug + '/export/pdf?mode=detailed" class="btn btn-primary" style="font-size:0.8125rem;padding:0.5rem 1rem;"><span class="export-icon">&#128196;</span>PDF</a>' +
+            '<a href="/api/decisions/' + slug + '/export/docx?mode=detailed" class="btn btn-primary" style="font-size:0.8125rem;padding:0.5rem 1rem;"><span class="export-icon">&#128209;</span>Word</a>' +
+            '<a href="/api/decisions/' + slug + '/export/xlsx?mode=detailed" class="btn btn-primary" style="font-size:0.8125rem;padding:0.5rem 1rem;"><span class="export-icon">&#128202;</span>Excel</a>' +
+            '<a href="/api/decisions/' + slug + '/export/txt?mode=detailed" class="btn btn-primary" style="font-size:0.8125rem;padding:0.5rem 1rem;"><span class="export-icon">&#128221;</span>Текст</a>' +
+            '</div></div>';
+        }
+
+        html += '<div class="res-footer"><a href="respond.html?id=' + slug + '">К оценке</a><a href="feed.html">В ленту</a><a href="dashboard.html">На главную</a></div>';
+        document.getElementById('resCard').innerHTML = html;
+
+        // Animate ranking bars (best first)
+        setTimeout(function() {
+          var bars = document.querySelectorAll('.rank-bar');
+          rankDesc.forEach(function(r, i) {
+            var pct = Math.round(r.score / scaleMax * 100);
+            if (bars[i]) bars[i].style.width = pct + '%';
+          });
+        }, 100);
+
+        // Charts: ascending (smallest left) for visualization
+        var rankAsc = d.ranking.slice().sort(function(a,b) { return a.score - b.score; });
+        var labels = rankAsc.map(function(r) { return r.name; });
+        var data = rankAsc.map(function(r) { return r.score; });
+        var colors = ['#2563eb','#3b82f6','#60a5fa','#93c5fd','#bfdbfe','#dbeafe','#1d4ed8','#1e40af'];
+        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        new Chart(document.getElementById('decChart'), {
+          type: 'bar',
+          data: { labels: labels, datasets: [{ label: 'Средний балл', data: data, backgroundColor: labels.map(function(_,i) { return colors[i%colors.length]; }), borderRadius: 8 }] },
+          options: {
+            responsive: true,
+            animation: { duration: 1000, easing: 'easeOutQuart' },
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { beginAtZero: true, max: scaleMax, grid: { color: isDark ? '#334155' : '#f1f5f9' }, ticks: { color: isDark ? '#94a3b8' : '#64748b' } },
+              x: { grid: { display: false }, ticks: { color: isDark ? '#94a3b8' : '#64748b' } }
+            }
+          }
+        });
+        new Chart(document.getElementById('decLineChart'), {
+          type: 'line',
+          data: { labels: labels, datasets: [{ label: 'Средний балл', data: data, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.3, pointRadius: 6 }] },
+          options: {
+            responsive: true,
+            animation: { duration: 1000 },
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { beginAtZero: true, max: scaleMax, grid: { color: isDark ? '#334155' : '#f1f5f9' }, ticks: { color: isDark ? '#94a3b8' : '#64748b' } },
+              x: { grid: { color: isDark ? '#334155' : '#f1f5f9' }, ticks: { color: isDark ? '#94a3b8' : '#64748b' } }
+            }
+          }
+        });
+
+        // AI review button (author only)
+        var aiBtn = document.getElementById('aiReviewBtn');
+        if (aiBtn) aiBtn.addEventListener('click', function() {
+          var btn = this;
+          var block = document.getElementById('aiReviewBlock');
+          btn.disabled = true;
+          btn.textContent = 'Анализирую...';
+          block.style.display = 'block';
+          block.innerHTML = '<div class="ai-review"><p class="ai-review-loading">Формирую рецензию...</p></div>';
+
+          apiGet('/api/decisions/' + slug + '/ai-review').then(function(r) {
+            if (r.data.review) {
+              var srcMap = { cerebras: 'Llama AI', deepseek: 'DeepSeek AI', gigachat: 'GigaChat', llama: 'Llama AI', groq: 'Llama AI', gemini: 'Gemini AI', openai: 'GPT', local: 'Авто-анализ' };
+              var srcLabel = srcMap[r.data.source] || 'ИИ';
+              var errHint = r.data.ai_error ? '<p class="ai-review-loading" style="margin-top:0.75rem;font-size:0.8rem;color:#b45309;">ИИ недоступен: ' + esc(r.data.ai_error) + '</p>' : '';
+              block.innerHTML = '<div class="ai-review">' +
+                '<div class="ai-review-header"><h3>&#10024; Рецензия</h3><span class="ai-review-badge">' + srcLabel + '</span></div>' +
+                '<div class="ai-review-text">' + esc(r.data.review) + '</div>' + errHint + '</div>';
+            } else {
+              block.innerHTML = '<div class="ai-review"><p class="ai-review-loading">' + esc(r.data.error || 'Не удалось получить рецензию') + '</p></div>';
+            }
+            btn.style.display = 'none';
+          }).catch(function() {
+            block.innerHTML = '<div class="ai-review"><p class="ai-review-loading">Ошибка соединения</p></div>';
+            btn.disabled = false;
+            btn.textContent = '&#10024; ИИ-рецензия на результаты';
+          });
+        });
+      }).catch(function() {
+        document.getElementById('resCard').innerHTML = '<p style="text-align:center;">Не удалось загрузить результаты.</p><div class="res-footer"><a href="feed.html">В ленту</a><a href="dashboard.html">На главную</a></div>';
+      });
+    }
+
+    function esc(s) { var d = document.createElement('div'); d.appendChild(document.createTextNode(s || '')); return d.innerHTML; }
+  </script>
+</body>
+</html>
