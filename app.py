@@ -24,7 +24,12 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'database.db')
+# Railway: смонтируй Volume на /data, задай DATABASE_PATH=/data/database.db
+_vol = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH')
+DB_PATH = os.environ.get('DATABASE_PATH') or (
+    os.path.join(_vol, 'database.db') if _vol else
+    os.path.join(os.path.dirname(__file__), 'database.db')
+)
 OPENAI_KEY = os.environ.get('OPENAI_API_KEY', '')
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY', '')
 GROQ_KEY = os.environ.get('GROQ_API_KEY', '')
