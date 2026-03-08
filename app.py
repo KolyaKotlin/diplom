@@ -471,13 +471,14 @@ def _moderate_content(title, description='', options=None):
         if result is None:
             print('[Moderation] AI недоступен — пропуск проверки (действует только локальный фильтр)')
             return True, None
-        r = result.strip().upper()
+        r = result.strip().upper().replace('\u041e', 'O').replace('\u041a', 'K')  # кириллица О,К → латиница
         if r.startswith('OK'):
             return True, None
         if 'REJECT' in r:
             return False, 'Контент нарушает правила сообщества'
+        # Убрано «не могу» — ИИ часто пишет это при неуверенности, что давало ложные срабатывания
         if any(w in result.lower() for w in ['недопустим', 'нарушает', 'запрещён', 'запрещен', 'отклон',
-                                              'нецензурн', 'насили', 'не поддержив', 'не могу']):
+                                              'нецензурн', 'насили', 'не поддержив']):
             return False, 'Контент отклонён модерацией'
         return True, None
     except Exception as e:
