@@ -205,12 +205,17 @@ function renderDecisions(el) {
       html += '<div class="empty-state">Пока нет решений. Создайте первое!</div>';
     } else {
       decs.forEach(function(d) {
+        var pubBtn = d.isPublic
+          ? '<button class="btn btn-outline pub-dec-btn" data-slug="' + d.slug + '" title="Убрать из ленты">Убрать из ленты</button>'
+          : '<button class="btn btn-outline pub-dec-btn" data-slug="' + d.slug + '" title="Опубликовать в ленте">Опубликовать в ленте</button>';
         html += '<div class="poll-item animate-in"><div class="poll-info">' +
           '<div class="poll-title">' + esc(d.title) + '</div>' +
           '<div class="poll-meta"><span class="badge ' + (d.isActive ? 'badge-active' : 'badge-closed') + '">' + (d.isActive ? 'Активно' : 'Завершено') + '</span> &middot; ' +
+          (d.isPublic ? '<span style="color:var(--primary);font-size:0.75rem;">В ленте</span> &middot; ' : '') +
           d.responsesCount + ' ответов &middot; ' + d.alternativesCount + ' вариантов</div>' +
           (d.deadline ? '<div style="margin-top:0.5rem;" data-countdown="' + escAttr(d.deadline) + '">' + renderCountdown(d.deadline) + '</div>' : '') + '</div>' +
           '<div class="poll-actions">' +
+            pubBtn +
             '<button class="btn btn-outline edit-dec-btn" data-idx="' + decs.indexOf(d) + '">Редактировать</button>' +
             '<button class="btn btn-outline share-dec-btn" data-slug="' + d.slug + '" data-title="' + escAttr(d.title) + '">Поделиться</button>' +
             '<button class="btn btn-primary view-dec-btn" data-slug="' + d.slug + '">Результаты</button>' +
@@ -221,6 +226,14 @@ function renderDecisions(el) {
     }
     el.innerHTML = html;
     document.getElementById('newDecBtn').addEventListener('click', function() { openDecisionWizard(); });
+    el.querySelectorAll('.pub-dec-btn').forEach(function(b) {
+      b.addEventListener('click', function() {
+        var slug = b.dataset.slug;
+        var isUnpublish = b.textContent.indexOf('Убрать') >= 0;
+        var url = isUnpublish ? '/api/decisions/' + slug + '/unpublish-from-feed' : '/api/decisions/' + slug + '/publish-to-feed';
+        apiPost(url, {}).then(function() { showToast(isUnpublish ? 'Убрано из ленты' : 'Опубликовано в ленту'); renderDecisions(el); });
+      });
+    });
     el.querySelectorAll('.share-dec-btn').forEach(function(b) {
       b.addEventListener('click', function() { openShareDecision(b.dataset.slug, b.dataset.title); });
     });
@@ -484,12 +497,17 @@ function renderPolls(el) {
       html += '<div class="empty-state">Пока нет голосований. Создайте первое!</div>';
     } else {
       polls.forEach(function(p) {
+        var pubBtn = p.isPublic
+          ? '<button class="btn btn-outline pub-poll-btn" data-slug="' + p.slug + '" title="Убрать из ленты">Убрать из ленты</button>'
+          : '<button class="btn btn-outline pub-poll-btn" data-slug="' + p.slug + '" title="Опубликовать в ленте">Опубликовать в ленте</button>';
         html += '<div class="poll-item animate-in"><div class="poll-info">' +
           '<div class="poll-title">' + esc(p.title) + '</div>' +
           '<div class="poll-meta"><span class="badge ' + (p.isActive ? 'badge-active' : 'badge-closed') + '">' + (p.isActive ? 'Активно' : 'Завершено') + '</span> &middot; ' +
+          (p.isPublic ? '<span style="color:var(--primary);font-size:0.75rem;">В ленте</span> &middot; ' : '') +
           p.totalVotes + ' голосов</div>' +
           (p.deadline ? '<div style="margin-top:0.5rem;" data-countdown="' + escAttr(p.deadline) + '">' + renderCountdown(p.deadline) + '</div>' : '') + '</div>' +
           '<div class="poll-actions">' +
+            pubBtn +
             '<button class="btn btn-outline share-poll-btn" data-slug="' + p.slug + '" data-title="' + escAttr(p.title) + '">Поделиться</button>' +
             '<button class="btn btn-outline edit-poll-btn" data-slug="' + p.slug + '">Редактировать</button>' +
             '<button class="btn btn-outline results-poll-btn" data-slug="' + p.slug + '">Результаты</button>' +
@@ -499,6 +517,14 @@ function renderPolls(el) {
     }
     el.innerHTML = html;
     document.getElementById('newPollBtn').addEventListener('click', openCreatePoll);
+    el.querySelectorAll('.pub-poll-btn').forEach(function(b) {
+      b.addEventListener('click', function() {
+        var slug = b.dataset.slug;
+        var isUnpublish = b.textContent.indexOf('Убрать') >= 0;
+        var url = isUnpublish ? '/api/polls/' + slug + '/unpublish-from-feed' : '/api/polls/' + slug + '/publish-to-feed';
+        apiPost(url, {}).then(function() { showToast(isUnpublish ? 'Убрано из ленты' : 'Опубликовано в ленту'); renderPolls(el); });
+      });
+    });
     el.querySelectorAll('.share-poll-btn').forEach(function(b) { b.addEventListener('click', function() { openSharePoll(b.dataset.slug, b.dataset.title); }); });
     el.querySelectorAll('.edit-poll-btn').forEach(function(b) { b.addEventListener('click', function() { openEditPoll(b.dataset.slug); }); });
     el.querySelectorAll('.results-poll-btn').forEach(function(b) { b.addEventListener('click', function() { window.open('results.html?id=' + b.dataset.slug, '_blank'); }); });

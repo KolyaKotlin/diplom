@@ -1033,14 +1033,12 @@ def create_poll():
     if not title: return jsonify({"error": "Введите тему"}), 400
     if len(options) < 2: return jsonify({"error": "Минимум 2 варианта"}), 400
     mod_reason = None
-    if is_public:
-        ok, reason = _moderate_content(title, desc, options)
-        if not ok:
-            w, blocked = _apply_warning(session['user_id'], 'poll', title, desc, reason)
-            if blocked:
-                return jsonify({"error": "Аккаунт заблокирован за повторные нарушения", "blocked": True}), 403
-            is_public = 0
-            mod_reason = reason
+    ok, reason = _moderate_content(title, desc, options)
+    if not ok:
+        w, blocked = _apply_warning(session['user_id'], 'poll', title, desc, reason)
+        if blocked:
+            return jsonify({"error": "Аккаунт заблокирован за повторные нарушения", "blocked": True}), 403
+        return jsonify({"error": reason or "Контент отклонён модерацией"}), 400
     slug = uuid.uuid4().hex[:10]
     conn = get_db()
     _ensure_is_public_columns(conn)
@@ -1051,11 +1049,7 @@ def create_poll():
         t = (opt if isinstance(opt, str) else opt.get('text', '')).strip()
         if t: conn.execute("INSERT INTO poll_options (poll_id,text,sort_order) VALUES (?,?,?)", (pid, t, i))
     conn.commit(); conn.close()
-    out = {"ok": True, "slug": slug, "isPublic": bool(is_public)}
-    if mod_reason:
-        out["reason"] = mod_reason
-        out["notPublishedToFeed"] = True
-    return jsonify(out), 201
+    return jsonify({"ok": True, "slug": slug, "isPublic": bool(is_public)}), 201
 
 @app.route('/api/polls/<slug>', methods=['PUT'])
 @block_if_banned
@@ -1075,17 +1069,15 @@ def edit_poll(slug):
     elif show_voters: anonymous = 0
     max_votes = int(d.get('maxVotes') or p['max_votes'] or 0)
     is_public = 1 if (d.get('isPublic') is True or d.get('isPublic') == 'true') else (0 if 'isPublic' in d else (int(p['is_public']) if 'is_public' in p.keys() else 0))
-    mod_reason = None
-    if is_public:
-        edit_opts = d.get('options') or []
-        ok, reason = _moderate_content(title, desc, edit_opts)
-        if not ok:
-            w, blocked = _apply_warning(session['user_id'], 'poll', title, desc, reason)
-            if blocked:
-                conn.close()
-                return jsonify({"error": "Аккаунт заблокирован за повторные нарушения", "blocked": True}), 403
-            is_public = 0
-            mod_reason = reason
+    edit_opts = d.get('options') or []
+    ok, reason = _moderate_content(title, desc, edit_opts)
+    if not ok:
+        w, blocked = _apply_warning(session['user_id'], 'poll', title, desc, reason)
+        if blocked:
+            conn.close()
+            return jsonify({"error": "Аккаунт заблокирован за повторные нарушения", "blocked": True}), 403
+        conn.close()
+        return jsonify({"error": reason or "Контент отклонён модерацией"}), 400
     conn.execute("UPDATE polls SET title=?,description=?,deadline=?,show_results=?,show_voters=?,anonymous=?,max_votes=?,is_public=? WHERE id=?",
                  (title, desc, deadline or None, show_results, show_voters, anonymous, max_votes, is_public, p['id']))
     if 'options' in d:
@@ -1095,11 +1087,7 @@ def edit_poll(slug):
             t = (opt if isinstance(opt, str) else opt.get('text', '')).strip()
             if t: conn.execute("INSERT INTO poll_options (poll_id,text,sort_order) VALUES (?,?,?)", (p['id'], t, i))
     conn.commit(); conn.close()
-    out = {"ok": True}
-    if mod_reason:
-        out["reason"] = mod_reason
-        out["notPublishedToFeed"] = True
-    return jsonify(out)
+    return jsonify({"ok": True})
 
 @app.route('/api/polls')
 @login_required
@@ -1219,6 +1207,27 @@ def toggle_poll(slug):
     conn.execute("UPDATE polls SET is_active=? WHERE id=?", (ns, p['id']))
     conn.commit(); conn.close()
     return jsonify({"ok": True, "isActive": bool(ns)})
+
+@app.route('/api/polls/<slug>/publish-to-feed', methods=['POST'])
+@block_if_banned
+def poll_publish_to_feed(slug):
+    conn = get_db()
+    _ensure_is_public_columns(conn)
+    p = conn.execute("SELECT * FROM polls WHERE slug=? AND user_id=?", (slug, session['user_id'])).fetchone()
+    if not p: conn.close(); return jsonify({"error": "Не найдено"}), 404
+    conn.execute("UPDATE polls SET is_public=1 WHERE id=?", (p['id'],))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True, "isPublic": True})
+
+@app.route('/api/polls/<slug>/unpublish-from-feed', methods=['POST'])
+@block_if_banned
+def poll_unpublish_from_feed(slug):
+    conn = get_db()
+    p = conn.execute("SELECT * FROM polls WHERE slug=? AND user_id=?", (slug, session['user_id'])).fetchone()
+    if not p: conn.close(); return jsonify({"error": "Не найдено"}), 404
+    conn.execute("UPDATE polls SET is_public=0 WHERE id=?", (p['id'],))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True, "isPublic": False})
 
 @app.route('/api/polls/<slug>/qr')
 def poll_qr(slug):
@@ -1428,6 +1437,29 @@ def toggle_decision(slug):
     conn.execute("UPDATE decisions SET is_active=? WHERE id=?", (ns, dc['id']))
     conn.commit(); conn.close()
     return jsonify({"ok": True})
+
+@app.route('/api/decisions/<slug>/publish-to-feed', methods=['POST'])
+@block_if_banned
+def decision_publish_to_feed(slug):
+    """Опубликовать решение в ленту (is_public=1)."""
+    conn = get_db()
+    _ensure_is_public_columns(conn)
+    dc = conn.execute("SELECT * FROM decisions WHERE slug=? AND user_id=?", (slug, session['user_id'])).fetchone()
+    if not dc: conn.close(); return jsonify({"error": "Не найдено"}), 404
+    conn.execute("UPDATE decisions SET is_public=1 WHERE id=?", (dc['id'],))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True, "isPublic": True})
+
+@app.route('/api/decisions/<slug>/unpublish-from-feed', methods=['POST'])
+@block_if_banned
+def decision_unpublish_from_feed(slug):
+    """Убрать решение из ленты (is_public=0)."""
+    conn = get_db()
+    dc = conn.execute("SELECT * FROM decisions WHERE slug=? AND user_id=?", (slug, session['user_id'])).fetchone()
+    if not dc: conn.close(); return jsonify({"error": "Не найдено"}), 404
+    conn.execute("UPDATE decisions SET is_public=0 WHERE id=?", (dc['id'],))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True, "isPublic": False})
 
 @app.route('/api/decisions/<slug>', methods=['PUT'])
 @block_if_banned
