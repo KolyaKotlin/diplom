@@ -417,7 +417,7 @@ function renderWiz(step) {
         if (res.data.warning) {
           showWarningModal(res.data.reason || 'Контент отклонён', res.data.warningCount);
           btn.disabled = false; btn.textContent = wiz.editSlug ? 'Сохранить' : 'Создать решение';
-          return;
+          if (!res.data.ok) return;
         }
         if (res.data.ok) {
           if (res.data.isPublic) showToast('Опубликовано в ленту');

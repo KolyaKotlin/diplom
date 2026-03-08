@@ -1039,7 +1039,7 @@ def create_poll():
         w, blocked = _apply_warning(session['user_id'], 'poll', title, desc, reason)
         if blocked:
             return jsonify({"error": "Аккаунт заблокирован за повторные нарушения", "blocked": True}), 403
-        return jsonify({"error": reason or "Контент отклонён модерацией"}), 400
+        return jsonify({"error": reason or "Контент отклонён модерацией", "warning": True, "reason": reason, "warningCount": w}), 400
     slug = uuid.uuid4().hex[:10]
     conn = get_db()
     _ensure_is_public_columns(conn)
@@ -1078,7 +1078,7 @@ def edit_poll(slug):
             conn.close()
             return jsonify({"error": "Аккаунт заблокирован за повторные нарушения", "blocked": True}), 403
         conn.close()
-        return jsonify({"error": reason or "Контент отклонён модерацией"}), 400
+        return jsonify({"error": reason or "Контент отклонён модерацией", "warning": True, "reason": reason, "warningCount": w}), 400
     conn.execute("UPDATE polls SET title=?,description=?,deadline=?,show_results=?,show_voters=?,anonymous=?,max_votes=?,is_public=? WHERE id=?",
                  (title, desc, deadline or None, show_results, show_voters, anonymous, max_votes, is_public, p['id']))
     if 'options' in d:
@@ -1263,6 +1263,7 @@ def create_decision():
     if len(alts) < 2: return jsonify({"error": "Минимум 2 варианта"}), 400
     if len(crits) < 1: return jsonify({"error": "Минимум 1 критерий"}), 400
     mod_reason = None
+    mod_warning_count = 0
     if is_public:
         ok, reason = _moderate_content(title, desc, alts + crits)
         if not ok:
@@ -1271,6 +1272,7 @@ def create_decision():
                 return jsonify({"error": "Аккаунт заблокирован за повторные нарушения", "blocked": True}), 403
             is_public = 0
             mod_reason = reason
+            mod_warning_count = w
     slug = uuid.uuid4().hex[:10]
     conn = get_db()
     _ensure_is_public_columns(conn)
@@ -1288,6 +1290,8 @@ def create_decision():
     if mod_reason:
         out["reason"] = mod_reason
         out["notPublishedToFeed"] = True
+        out["warning"] = True
+        out["warningCount"] = mod_warning_count
     return jsonify(out), 201
 
 @app.route('/api/decisions')
@@ -1483,6 +1487,7 @@ def edit_decision(slug):
     scale_max = int(d.get('scaleMax') or d.get('scale_max') or dc.get('scale_max') or 5)
     if scale_max not in (3, 5, 10, 100): scale_max = 5
     mod_reason = None
+    mod_warning_count = 0
     if is_public:
         alts_text = d.get('alternatives') or []
         crits_text = d.get('criteria') or []
@@ -1494,6 +1499,7 @@ def edit_decision(slug):
                 return jsonify({"error": "Аккаунт заблокирован за повторные нарушения", "blocked": True}), 403
             is_public = 0
             mod_reason = reason
+            mod_warning_count = w
     conn.execute(
         "UPDATE decisions SET title=?,description=?,auth_only=?,deadline=?,show_respondents=?,anonymous=?,show_results=?,is_public=?,scale_max=? WHERE id=?",
         (title, desc, auth_only, deadline or None, show_respondents, anonymous, show_results, is_public, scale_max, dc['id']))
@@ -1512,6 +1518,8 @@ def edit_decision(slug):
     if mod_reason:
         out["reason"] = mod_reason
         out["notPublishedToFeed"] = True
+        out["warning"] = True
+        out["warningCount"] = mod_warning_count
     return jsonify(out)
 
 @app.route('/api/decisions/<slug>', methods=['DELETE'])
