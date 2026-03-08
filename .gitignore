@@ -1,5 +1,6 @@
 .env
 database.db
+decisions.db
 __pycache__/
 *.pyc
 cloudflared.exe
