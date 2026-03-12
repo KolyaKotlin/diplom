@@ -1656,11 +1656,12 @@ def _register_pdf_font():
 
     _FONT = 'PDFFont'
     _base = os.path.dirname(os.path.abspath(__file__))
+    _bundled = (os.path.join(_base, 'fonts', 'DejaVuSans.ttf'), os.path.join(_base, 'fonts', 'DejaVuSans-Bold.ttf'))
     _paths = [
+        _bundled,  # bundled — всегда работает, поддерживает кириллицу
         (r'C:\Windows\Fonts\segoeui.ttf', r'C:\Windows\Fonts\segoeuib.ttf'),
         ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
         ('/usr/share/fonts/TTF/DejaVuSans.ttf', '/usr/share/fonts/TTF/DejaVuSans-Bold.ttf'),
-        (os.path.join(_base, 'fonts', 'DejaVuSans.ttf'), os.path.join(_base, 'fonts', 'DejaVuSans-Bold.ttf')),
     ]
     for normal_path, bold_path in _paths:
         if os.path.exists(normal_path):
