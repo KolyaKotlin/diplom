@@ -84,14 +84,16 @@
         });
         html += '<canvas id="pollChart" style="margin-top:2rem;max-height:280px;"></canvas>';
 
-        // Export buttons
-        html += '<div class="export-bar">' +
-          '<span style="font-size:0.8125rem;font-weight:600;color:var(--text-muted);align-self:center;margin-right:0.25rem;">Экспорт:</span>' +
-          '<a href="/api/polls/' + slug + '/export/pdf" class="btn btn-outline"><span class="export-icon">&#128196;</span>PDF</a>' +
-          '<a href="/api/polls/' + slug + '/export/docx" class="btn btn-outline"><span class="export-icon">&#128209;</span>Word</a>' +
-          '<a href="/api/polls/' + slug + '/export/xlsx" class="btn btn-outline"><span class="export-icon">&#128202;</span>Excel</a>' +
-          '<a href="/api/polls/' + slug + '/export/txt" class="btn btn-outline"><span class="export-icon">&#128221;</span>Текст</a>' +
-          '</div>';
+        // Export buttons — только для автора
+        if (d.isAuthor) {
+          html += '<div class="export-bar">' +
+            '<span style="font-size:0.8125rem;font-weight:600;color:var(--text-muted);align-self:center;margin-right:0.25rem;">Экспорт:</span>' +
+            '<a href="/api/polls/' + slug + '/export/pdf" class="btn btn-outline"><span class="export-icon">&#128196;</span>PDF</a>' +
+            '<a href="/api/polls/' + slug + '/export/docx" class="btn btn-outline"><span class="export-icon">&#128209;</span>Word</a>' +
+            '<a href="/api/polls/' + slug + '/export/xlsx" class="btn btn-outline"><span class="export-icon">&#128202;</span>Excel</a>' +
+            '<a href="/api/polls/' + slug + '/export/txt" class="btn btn-outline"><span class="export-icon">&#128221;</span>Текст</a>' +
+            '</div>';
+        }
 
         html += '<div class="results-footer"><a href="vote.html?id=' + slug + '">&larr; К голосованию</a><a href="feed.html">В ленту</a><a href="dashboard.html">На главную</a></div>';
         document.getElementById('resultsCard').innerHTML = html;

@@ -1196,7 +1196,8 @@ def poll_results(slug):
     conn.close()
     return jsonify({"title": p['title'], "totalVoters": total, "results": results,
         "showResults": sr, "isActive": active,
-        "showVoters": bool(p['show_voters']) and is_author, "anonymous": bool(p['anonymous'])})
+        "showVoters": bool(p['show_voters']) and is_author, "anonymous": bool(p['anonymous']),
+        "isAuthor": is_author})
 
 @app.route('/api/polls/<slug>/toggle', methods=['POST'])
 @block_if_banned
@@ -1597,7 +1598,7 @@ def _get_dec_data(slug):
         respondents = [r['first_name'] + ' ' + r['last_name'] for r in rrows]
     conn.close()
     return {"title": dc['title'], "responses": rc, "ranking": ranking, "details": details,
-            "alts": alts, "crits": crits, "respondents": respondents}
+            "alts": alts, "crits": crits, "respondents": respondents, "is_author": is_author}
 
 
 def _get_poll_data(slug):
@@ -1618,7 +1619,7 @@ def _get_poll_data(slug):
             voters = [r['first_name'] + ' ' + r['last_name'] for r in vrows]
         results.append({"text": o['text'], "votes": cnt, "voters": voters})
     conn.close()
-    return {"title": p['title'], "totalVoters": vc, "results": results}
+    return {"title": p['title'], "totalVoters": vc, "results": results, "is_author": is_author}
 
 
 def _decision_winner_text(ranking):
@@ -1645,6 +1646,33 @@ def _poll_winner_text(results):
         return f"Лидер голосования — {winners[0]['text']} ({best_votes} гол.)"
     names = ", ".join(w['text'] for w in winners)
     return f"Лидеры голосования (равный результат: {best_votes} гол.) — {names}"
+
+
+def _register_pdf_font():
+    """Register a Cyrillic-capable font for PDF export. Returns (normal, bold) font names."""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.pdfbase.pdfmetrics import registerFontFamily
+
+    _FONT = 'PDFFont'
+    _base = os.path.dirname(os.path.abspath(__file__))
+    _paths = [
+        (r'C:\Windows\Fonts\segoeui.ttf', r'C:\Windows\Fonts\segoeuib.ttf'),
+        ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
+        ('/usr/share/fonts/TTF/DejaVuSans.ttf', '/usr/share/fonts/TTF/DejaVuSans-Bold.ttf'),
+        (os.path.join(_base, 'fonts', 'DejaVuSans.ttf'), os.path.join(_base, 'fonts', 'DejaVuSans-Bold.ttf')),
+    ]
+    for normal_path, bold_path in _paths:
+        if os.path.exists(normal_path):
+            try:
+                pdfmetrics.registerFont(TTFont(_FONT, normal_path))
+                bold_use = bold_path if os.path.exists(bold_path) else normal_path
+                pdfmetrics.registerFont(TTFont(_FONT + '-Bold', bold_use))
+                registerFontFamily(_FONT, normal=_FONT, bold=_FONT + '-Bold')
+                return (_FONT, _FONT + '-Bold')
+            except Exception:
+                continue
+    return ('Helvetica', 'Helvetica-Bold')
 
 
 def _build_review_context(d):
@@ -1739,6 +1767,8 @@ def export_decision(slug, fmt):
     d = _get_dec_data(slug)
     if not d:
         return jsonify({"error": "Не найдено"}), 404
+    if not d.get('is_author'):
+        return jsonify({"error": "Экспорт доступен только автору голосования"}), 403
     detailed = request.args.get('mode') == 'detailed'
     review_text = _build_review_text(d) if detailed else ""
 
@@ -1868,15 +1898,8 @@ def export_decision(slug, fmt):
         from reportlab.lib.units import cm
         from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
 
-        _FONT = 'SegoeUI'
-        if _FONT not in pdfmetrics.getRegisteredFontNames():
-            pdfmetrics.registerFont(TTFont(_FONT, r'C:\Windows\Fonts\segoeui.ttf'))
-            pdfmetrics.registerFont(TTFont(_FONT + '-Bold', r'C:\Windows\Fonts\segoeuib.ttf'))
-            from reportlab.pdfbase.pdfmetrics import registerFontFamily
-            registerFontFamily(_FONT, normal=_FONT, bold=_FONT + '-Bold')
+        _FONT, _FONT_BOLD = _register_pdf_font()
 
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.5*cm, bottomMargin=1.5*cm)
@@ -1889,7 +1912,7 @@ def export_decision(slug, fmt):
         elements.append(Paragraph(d['title'], title_style))
         elements.append(Paragraph(f"Ответов: {d['responses']}", styles['Normal']))
         if winner_line:
-            winner_style = ParagraphStyle('WinnerLine', fontName=_FONT + '-Bold', fontSize=13, textColor=colors.HexColor('#2563EB'), spaceBefore=8, spaceAfter=4)
+            winner_style = ParagraphStyle('WinnerLine', fontName=_FONT_BOLD, fontSize=13, textColor=colors.HexColor('#2563EB'), spaceBefore=8, spaceAfter=4)
             elements.append(Paragraph(winner_line, winner_style))
         elements.append(Spacer(1, 12))
 
@@ -1909,7 +1932,7 @@ def export_decision(slug, fmt):
         t = Table(table_data, repeatRows=1)
         t.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#DBEAFE')),
-            ('FONTNAME', (0,0), (-1,0), _FONT + '-Bold'),
+            ('FONTNAME', (0,0), (-1,0), _FONT_BOLD),
             ('FONTNAME', (0,1), (-1,-1), _FONT),
             ('FONTSIZE', (0,0), (-1,-1), 9),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
@@ -1939,6 +1962,8 @@ def export_poll(slug, fmt):
     d = _get_poll_data(slug)
     if not d:
         return jsonify({"error": "Не найдено"}), 404
+    if not d.get('is_author'):
+        return jsonify({"error": "Экспорт доступен только автору голосования"}), 403
     total = sum(r['votes'] for r in d['results']) or 1
 
     poll_winner = _poll_winner_text(d['results'])
@@ -2032,15 +2057,8 @@ def export_poll(slug, fmt):
         from reportlab.lib.units import cm
         from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
 
-        _FONT = 'SegoeUI'
-        if _FONT not in pdfmetrics.getRegisteredFontNames():
-            pdfmetrics.registerFont(TTFont(_FONT, r'C:\Windows\Fonts\segoeui.ttf'))
-            pdfmetrics.registerFont(TTFont(_FONT + '-Bold', r'C:\Windows\Fonts\segoeuib.ttf'))
-            from reportlab.pdfbase.pdfmetrics import registerFontFamily
-            registerFontFamily(_FONT, normal=_FONT, bold=_FONT + '-Bold')
+        _FONT, _FONT_BOLD = _register_pdf_font()
 
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.5*cm, bottomMargin=1.5*cm)
@@ -2051,7 +2069,7 @@ def export_poll(slug, fmt):
         elements.append(Paragraph(d['title'], ParagraphStyle('T', parent=styles['Title'], fontName=_FONT, fontSize=16, spaceAfter=6)))
         elements.append(Paragraph(f"Проголосовало: {d['totalVoters']}", styles['Normal']))
         if poll_winner:
-            pw_style = ParagraphStyle('PollWinner', fontName=_FONT + '-Bold', fontSize=13, textColor=colors.HexColor('#2563EB'), spaceBefore=8, spaceAfter=4)
+            pw_style = ParagraphStyle('PollWinner', fontName=_FONT_BOLD, fontSize=13, textColor=colors.HexColor('#2563EB'), spaceBefore=8, spaceAfter=4)
             elements.append(Paragraph(poll_winner, pw_style))
         elements.append(Spacer(1, 12))
         has_voters = any(r.get('voters') for r in d['results'])
@@ -2067,7 +2085,7 @@ def export_poll(slug, fmt):
         t = Table(table_data, repeatRows=1)
         t.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#DBEAFE')),
-            ('FONTNAME', (0,0), (-1,0), _FONT + '-Bold'),
+            ('FONTNAME', (0,0), (-1,0), _FONT_BOLD),
             ('FONTNAME', (0,1), (-1,-1), _FONT),
             ('FONTSIZE', (0,0), (-1,-1), 10),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
