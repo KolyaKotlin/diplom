@@ -551,6 +551,7 @@ function renderPolls(el) {
             '<button class="btn btn-outline copy-poll-btn" data-slug="' + p.slug + '">Копировать</button>' +
             '<button class="btn btn-outline results-poll-btn" data-slug="' + p.slug + '">Результаты</button>' +
             '<button class="btn btn-outline toggle-poll-btn" data-slug="' + p.slug + '">' + (p.isActive ? 'Завершить' : 'Открыть') + '</button>' +
+            '<button class="btn btn-outline del-poll-btn" data-slug="' + p.slug + '">Удалить</button>' +
           '</div></div>';
       });
     }
@@ -585,6 +586,7 @@ function renderPolls(el) {
     }); }); });
     el.querySelectorAll('.results-poll-btn').forEach(function(b) { b.addEventListener('click', function() { window.open('results.html?id=' + b.dataset.slug, '_blank'); }); });
     el.querySelectorAll('.toggle-poll-btn').forEach(function(b) { b.addEventListener('click', function() { apiPost('/api/polls/' + b.dataset.slug + '/toggle', {}).then(function() { renderPolls(el); }); }); });
+    el.querySelectorAll('.del-poll-btn').forEach(function(b) { b.addEventListener('click', function() { if (confirm('Удалить голосование?')) apiDelete('/api/polls/' + b.dataset.slug).then(function() { renderPolls(el); }); }); });
     startDashboardCountdowns();
   });
 }

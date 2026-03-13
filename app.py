@@ -1216,6 +1216,17 @@ def poll_unpublish_from_feed(slug):
     conn.commit(); conn.close()
     return jsonify({"ok": True, "isPublic": False})
 
+@app.route('/api/polls/<slug>', methods=['DELETE'])
+@block_if_banned
+def delete_poll(slug):
+    conn = get_db()
+    p = conn.execute("SELECT * FROM polls WHERE slug=? AND user_id=?", (slug, session['user_id'])).fetchone()
+    if not p: conn.close(); return jsonify({"error": "Не найдено"}), 404
+    conn.execute("DELETE FROM polls WHERE id=?", (p['id'],))
+    conn.commit(); conn.close()
+    return jsonify({"ok": True})
+
+
 @app.route('/api/polls/<slug>/qr')
 def poll_qr(slug):
     url = request.host_url.rstrip('/') + '/vote.html?id=' + slug
