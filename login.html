@@ -69,7 +69,8 @@
             password: document.getElementById('password').value
           }).then(function(res) {
             if (res.data && res.data.ok) {
-              window.location.href = 'feed.html';
+              var ret = new URLSearchParams(window.location.search).get('return');
+              window.location.href = (ret && /^[a-z0-9_.-]+\.html(\?[^#]*)?$/i.test(ret)) ? ret : 'feed.html';
             } else {
               showToast((res.data && res.data.error) || 'Ошибка входа');
               btn.disabled = false;

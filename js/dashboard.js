@@ -58,6 +58,12 @@ function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('show');
 }
+window.addEventListener('beforeunload', function() {
+  if (document.getElementById('wTitle')) { saveWiz1(); }
+  if (document.getElementById('wCrits')) { saveWiz2(); }
+  if (document.getElementById('wSubmit')) { saveWiz3(); }
+  if (document.getElementById('pollTitle') && document.getElementById('modalOverlay').style.display === 'flex') { _savePollDraft(); }
+});
 document.getElementById('burgerBtn').addEventListener('click', openSidebar);
 document.getElementById('sidebarClose').addEventListener('click', closeSidebar);
 document.getElementById('sidebarOverlay').addEventListener('click', closeSidebar);
@@ -212,6 +218,7 @@ function renderDecisions(el) {
           (d.deadline ? '<div style="margin-top:0.5rem;" data-countdown="' + escAttr(d.deadline) + '">' + renderCountdown(d.deadline) + '</div>' : '') + '</div>' +
           '<div class="poll-actions">' +
             '<button class="btn btn-outline edit-dec-btn" data-idx="' + decs.indexOf(d) + '">Редактировать</button>' +
+            '<button class="btn btn-outline copy-dec-btn" data-idx="' + decs.indexOf(d) + '">Копировать</button>' +
             '<button class="btn btn-outline share-dec-btn" data-slug="' + d.slug + '" data-title="' + escAttr(d.title) + '">Поделиться</button>' +
             '<button class="btn btn-primary view-dec-btn" data-slug="' + d.slug + '">Результаты</button>' +
             '<button class="btn btn-outline toggle-dec-btn" data-slug="' + d.slug + '">' + (d.isActive ? 'Завершить' : 'Открыть') + '</button>' +
@@ -248,16 +255,56 @@ function renderDecisions(el) {
         renderWiz(1);
       });
     });
+    el.querySelectorAll('.copy-dec-btn').forEach(function(b) {
+      b.addEventListener('click', function() {
+        var d = decs[parseInt(b.dataset.idx)];
+        wiz = {
+          title: d.title + ' (копия)', description: d.description || '',
+          alternatives: d.alternatives && d.alternatives.length ? d.alternatives : ['', ''],
+          criteria: d.criteria && d.criteria.length ? d.criteria : [''],
+          authOnly: d.authOnly || false, showRespondents: d.showRespondents || false,
+          anonymous: d.anonymous || false, showResults: d.showResults || 'always',
+          deadline: '', isPublic: false, editSlug: '',
+          scaleMax: d.scaleMax || 5
+        };
+        showToast('Скопировано. Отредактируйте и создайте.');
+        renderWiz(1);
+      });
+    });
     startDashboardCountdowns();
   });
 }
 
 // ═══════ РЕШЕНИЯ — визард (3 шага) ═══════
 var wiz = {};
+var _DRAFT_KEY = 'diplom_draft_decision';
+var _POLL_DRAFT_KEY = 'diplom_draft_poll';
 
 function openDecisionWizard() {
+  var draft = null;
+  try { draft = localStorage.getItem(_DRAFT_KEY); } catch (e) {}
+  if (draft) {
+    try {
+      var parsed = JSON.parse(draft);
+      if (parsed && (parsed.title || parsed.alternatives && parsed.alternatives.some(function(a) { return a && a.trim(); }))) {
+        if (confirm('Восстановить черновик решения?')) {
+          wiz = parsed;
+          renderWiz(1);
+          return;
+        }
+      }
+    } catch (e) {}
+  }
   wiz = { title: '', description: '', alternatives: ['', ''], criteria: [''], authOnly: false, showRespondents: false, anonymous: false, showResults: 'always', deadline: '', isPublic: false, editSlug: '', scaleMax: 5 };
   renderWiz(1);
+}
+
+function _saveDraft() {
+  if (!wiz.editSlug && (wiz.title || (wiz.alternatives && wiz.alternatives.some(function(a) { return a && a.trim(); })))) {
+    try { localStorage.setItem(_DRAFT_KEY, JSON.stringify(wiz)); } catch (e) {}
+  } else {
+    try { localStorage.removeItem(_DRAFT_KEY); } catch (e) {}
+  }
 }
 
 function renderWiz(step) {
@@ -268,7 +315,7 @@ function renderWiz(step) {
   if (step === 1) {
     h += '<h2 class="wizard-title">Вопрос и варианты</h2><p class="wizard-sub">Что решаем и какие есть варианты?</p>' +
       '<div class="field"><label>Вопрос</label><input type="text" id="wTitle" placeholder="Например: Какую CRM внедряем?" value="' + escAttr(wiz.title) + '"></div>' +
-      '<div class="field"><label>Описание (необязательно)</label><input type="text" id="wDesc" placeholder="Дополнительный контекст" value="' + escAttr(wiz.description) + '"></div>' +
+      '<div class="field"><label>Описание (необязательно)</label><textarea id="wDesc" placeholder="Дополнительный контекст" rows="2" style="resize:none;min-height:4rem;word-wrap:break-word;overflow-wrap:break-word;">' + escAttr(wiz.description) + '</textarea></div>' +
       '<div class="field"><label>Варианты</label><div id="wAlts">';
     wiz.alternatives.forEach(function(a, i) {
       h += '<div class="option-row"><input type="text" class="w-alt" placeholder="Вариант ' + (i+1) + '" value="' + escAttr(a) + '"><button type="button" class="remove-option w-alt-del">&times;</button></div>';
@@ -330,6 +377,8 @@ function renderWiz(step) {
       row.querySelector('.w-alt').focus();
     });
     bindDel('.w-alt-del', 'alternatives', 2, saveWiz1, function() { renderWiz(1); });
+    var wDesc = document.getElementById('wDesc');
+    if (wDesc) { _autoResizeTextarea(wDesc); wDesc.addEventListener('input', function() { _autoResizeTextarea(this); }); }
     document.getElementById('wNext').addEventListener('click', function() {
       saveWiz1();
       if (!wiz.title.trim()) { showToast('Введите вопрос'); return; }
@@ -420,6 +469,7 @@ function renderWiz(step) {
           if (!res.data.ok) return;
         }
         if (res.data.ok) {
+          try { localStorage.removeItem(_DRAFT_KEY); } catch (e) {}
           if (res.data.isPublic) showToast('Опубликовано в ленту');
           if (res.data.notPublishedToFeed) showToast('Сохранено. В ленту не опубликовано.');
           if (wiz.editSlug) {
@@ -436,8 +486,13 @@ function renderWiz(step) {
   }
 }
 
-function saveWiz1() { wiz.title = gv('#wTitle'); wiz.description = gv('#wDesc'); wiz.alternatives = gvAll('.w-alt'); }
-function saveWiz2() { wiz.criteria = gvAll('.w-crit'); }
+function saveWiz1() { wiz.title = gv('#wTitle'); wiz.description = gv('#wDesc'); wiz.alternatives = gvAll('.w-alt'); _saveDraft(); }
+function _autoResizeTextarea(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 300) + 'px';
+}
+function saveWiz2() { wiz.criteria = gvAll('.w-crit'); _saveDraft(); }
 function saveWiz3() {
   wiz.authOnly = document.getElementById('wAuth').checked;
   wiz.showRespondents = document.getElementById('wShowResp').checked;
@@ -446,6 +501,7 @@ function saveWiz3() {
   wiz.deadline = gv('#wDeadline');
   wiz.isPublic = document.getElementById('wIsPublic').checked;
   wiz.scaleMax = parseInt((document.getElementById('wScaleMax') || {}).value) || 5;
+  _saveDraft();
 }
 function gv(s) { var e = document.querySelector(s); return e ? e.value : ''; }
 function gvAll(s) { var r = []; document.querySelectorAll(s).forEach(function(e) { r.push(e.value); }); return r; }
@@ -492,6 +548,7 @@ function renderPolls(el) {
           '<div class="poll-actions">' +
             '<button class="btn btn-outline share-poll-btn" data-slug="' + p.slug + '" data-title="' + escAttr(p.title) + '">Поделиться</button>' +
             '<button class="btn btn-outline edit-poll-btn" data-slug="' + p.slug + '">Редактировать</button>' +
+            '<button class="btn btn-outline copy-poll-btn" data-slug="' + p.slug + '">Копировать</button>' +
             '<button class="btn btn-outline results-poll-btn" data-slug="' + p.slug + '">Результаты</button>' +
             '<button class="btn btn-outline toggle-poll-btn" data-slug="' + p.slug + '">' + (p.isActive ? 'Завершить' : 'Открыть') + '</button>' +
           '</div></div>';
@@ -501,6 +558,31 @@ function renderPolls(el) {
     document.getElementById('newPollBtn').addEventListener('click', openCreatePoll);
     el.querySelectorAll('.share-poll-btn').forEach(function(b) { b.addEventListener('click', function() { openSharePoll(b.dataset.slug, b.dataset.title); }); });
     el.querySelectorAll('.edit-poll-btn').forEach(function(b) { b.addEventListener('click', function() { openEditPoll(b.dataset.slug); }); });
+    el.querySelectorAll('.copy-poll-btn').forEach(function(b) { b.addEventListener('click', function() { apiGet('/api/polls/' + b.dataset.slug).then(function(res) {
+      var p = res.data.poll;
+      document.getElementById('modalOverlay').style.display = 'flex';
+      document.getElementById('modalTitle').textContent = 'Копия голосования';
+      document.getElementById('createPollForm').reset();
+      document.getElementById('pollSlugEdit').value = '';
+      document.getElementById('pollTitle').value = (p.title || '') + ' (копия)';
+      document.getElementById('pollDesc').value = p.description || '';
+      _autoResizeTextarea(document.getElementById('pollDesc'));
+      document.getElementById('pollMultiple').checked = p.multipleChoice;
+      document.getElementById('pollAuthOnly').checked = p.authOnly;
+      document.getElementById('pollShowResults').value = p.showResults || 'always';
+      document.getElementById('pollDeadline').value = '';
+      document.getElementById('pollShowVoters').checked = p.showVoters || false;
+      document.getElementById('pollAnonymous').checked = p.anonymous;
+      document.getElementById('pollMaxVotes').value = p.maxVotes || 0;
+      document.getElementById('pollIsPublic').checked = false;
+      syncPollNamesAnon();
+      var cont = document.getElementById('optionsContainer'); cont.innerHTML = '';
+      (p.options || []).forEach(function(o, i) {
+        cont.innerHTML += '<div class="option-row"><input type="text" class="poll-option" placeholder="Вариант ' + (i+1) + '" value="' + escAttr(o.text) + '" required><button type="button" class="remove-option">&times;</button></div>';
+      });
+      bindPollDel();
+      showToast('Скопировано. Отредактируйте и создайте.');
+    }); }); });
     el.querySelectorAll('.results-poll-btn').forEach(function(b) { b.addEventListener('click', function() { window.open('results.html?id=' + b.dataset.slug, '_blank'); }); });
     el.querySelectorAll('.toggle-poll-btn').forEach(function(b) { b.addEventListener('click', function() { apiPost('/api/polls/' + b.dataset.slug + '/toggle', {}).then(function() { renderPolls(el); }); }); });
     startDashboardCountdowns();
@@ -515,7 +597,65 @@ function syncPollNamesAnon() {
   else if (sv.checked) pa.checked = false;
 }
 
+function _getPollDraft() {
+  var opts = []; document.querySelectorAll('.poll-option').forEach(function(i) { if (i.value.trim()) opts.push(i.value.trim()); });
+  return {
+    title: (document.getElementById('pollTitle') || {}).value || '',
+    description: (document.getElementById('pollDesc') || {}).value || '',
+    options: opts,
+    multipleChoice: (document.getElementById('pollMultiple') || {}).checked,
+    authOnly: (document.getElementById('pollAuthOnly') || {}).checked,
+    showResults: (document.getElementById('pollShowResults') || {}).value,
+    deadline: (document.getElementById('pollDeadline') || {}).value || '',
+    showVoters: (document.getElementById('pollShowVoters') || {}).checked,
+    anonymous: (document.getElementById('pollAnonymous') || {}).checked,
+    maxVotes: parseInt((document.getElementById('pollMaxVotes') || {}).value) || 0,
+    isPublic: (document.getElementById('pollIsPublic') || {}).checked
+  };
+}
+function _savePollDraft() {
+  if ((document.getElementById('pollSlugEdit') || {}).value) return;
+  var d = _getPollDraft();
+  if (d.title || (d.options && d.options.length >= 2)) {
+    try { localStorage.setItem(_POLL_DRAFT_KEY, JSON.stringify(d)); } catch (e) {}
+  } else {
+    try { localStorage.removeItem(_POLL_DRAFT_KEY); } catch (e) {}
+  }
+}
 function openCreatePoll() {
+  var draft = null;
+  try { draft = localStorage.getItem(_POLL_DRAFT_KEY); } catch (e) {}
+  if (draft) {
+    try {
+      var parsed = JSON.parse(draft);
+      if (parsed && (parsed.title || (parsed.options && parsed.options.length >= 2))) {
+        if (confirm('Восстановить черновик голосования?')) {
+          document.getElementById('modalOverlay').style.display = 'flex';
+          document.getElementById('modalTitle').textContent = 'Новое голосование';
+          document.getElementById('pollSlugEdit').value = '';
+          document.getElementById('pollTitle').value = parsed.title || '';
+          document.getElementById('pollDesc').value = parsed.description || '';
+          _autoResizeTextarea(document.getElementById('pollDesc'));
+          document.getElementById('pollMultiple').checked = !!parsed.multipleChoice;
+          document.getElementById('pollAuthOnly').checked = !!parsed.authOnly;
+          document.getElementById('pollShowResults').value = parsed.showResults || 'always';
+          document.getElementById('pollDeadline').value = parsed.deadline || '';
+          document.getElementById('pollShowVoters').checked = !!parsed.showVoters;
+          document.getElementById('pollAnonymous').checked = !!parsed.anonymous;
+          document.getElementById('pollMaxVotes').value = parsed.maxVotes || 0;
+          document.getElementById('pollIsPublic').checked = !!parsed.isPublic;
+          syncPollNamesAnon();
+          var cont = document.getElementById('optionsContainer'); cont.innerHTML = '';
+          var opts = parsed.options && parsed.options.length >= 2 ? parsed.options : ['', ''];
+          opts.forEach(function(t, i) {
+            cont.innerHTML += '<div class="option-row"><input type="text" class="poll-option" placeholder="Вариант ' + (i+1) + '" value="' + escAttr(t) + '" required><button type="button" class="remove-option">&times;</button></div>';
+          });
+          bindPollDel();
+          return;
+        }
+      }
+    } catch (e) {}
+  }
   document.getElementById('modalOverlay').style.display = 'flex';
   document.getElementById('createPollForm').reset();
   document.getElementById('modalTitle').textContent = 'Новое голосование';
@@ -535,6 +675,7 @@ function openEditPoll(slug) {
     document.getElementById('pollSlugEdit').value = slug;
     document.getElementById('pollTitle').value = p.title;
     document.getElementById('pollDesc').value = p.description || '';
+    _autoResizeTextarea(document.getElementById('pollDesc'));
     document.getElementById('pollMultiple').checked = p.multipleChoice;
     document.getElementById('pollAuthOnly').checked = p.authOnly;
     document.getElementById('pollShowResults').value = p.showResults || 'always';
@@ -552,8 +693,23 @@ function openEditPoll(slug) {
   });
 }
 
-document.getElementById('modalClose').addEventListener('click', function() { document.getElementById('modalOverlay').style.display = 'none'; });
-document.getElementById('modalOverlay').addEventListener('click', function(e) { if (e.target === this) this.style.display = 'none'; });
+(function() {
+  var pollDesc = document.getElementById('pollDesc');
+  if (pollDesc) {
+    pollDesc.addEventListener('input', function() { _autoResizeTextarea(this); _savePollDraft(); });
+  }
+  ['pollTitle','pollDesc','pollDeadline','pollMaxVotes'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', _savePollDraft);
+  });
+  ['pollMultiple','pollAuthOnly','pollShowVoters','pollAnonymous','pollIsPublic'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', _savePollDraft);
+  });
+  document.getElementById('optionsContainer') && document.getElementById('optionsContainer').addEventListener('input', function() { setTimeout(_savePollDraft, 0); });
+})();
+document.getElementById('modalClose').addEventListener('click', function() { _savePollDraft(); document.getElementById('modalOverlay').style.display = 'none'; });
+document.getElementById('modalOverlay').addEventListener('click', function(e) { if (e.target === this) { _savePollDraft(); this.style.display = 'none'; } });
 document.getElementById('pollShowVoters').addEventListener('change', syncPollNamesAnon);
 document.getElementById('pollAnonymous').addEventListener('change', syncPollNamesAnon);
 document.getElementById('addOptionBtn').addEventListener('click', function() {
@@ -593,6 +749,7 @@ document.getElementById('createPollForm').addEventListener('submit', function(e)
       return;
     }
     if (res.data.ok) {
+      try { localStorage.removeItem(_POLL_DRAFT_KEY); } catch (e) {}
       document.getElementById('modalOverlay').style.display = 'none';
       if (res.data.isPublic) showToast('Опубликовано в ленту');
       if (res.data.notPublishedToFeed) showToast('Сохранено. В ленту не опубликовано.');

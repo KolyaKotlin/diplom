@@ -147,7 +147,8 @@
           agreeTerms: agreeTerms.checked
         }).then(function(res) {
           if (res.data.ok) {
-            window.location.href = 'feed.html';
+            var ret = new URLSearchParams(window.location.search).get('return');
+            window.location.href = (ret && /^[a-z0-9_.-]+\.html(\?[^#]*)?$/i.test(ret)) ? ret : 'feed.html';
           } else {
             showToast(res.data.error || 'Ошибка регистрации');
             submitBtn.textContent = 'Зарегистрироваться';

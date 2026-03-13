@@ -84,7 +84,10 @@
         if (poll.authOnly) {
           apiGet('/api/me').then(function(mr) {
             if (mr.status === 401) {
-              document.getElementById('voteCard').innerHTML = '<div class="vote-auth-msg">Для участия необходимо <a href="dashboard.html">войти</a> или <a href="register.html">зарегистрироваться</a>.</div><div class="back-links" style="margin-top:1rem;justify-content:center;"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>';
+              var returnUrl = 'vote.html?id=' + encodeURIComponent(slug);
+              var loginUrl = 'login.html?return=' + encodeURIComponent(returnUrl);
+              var regUrl = 'register.html?return=' + encodeURIComponent(returnUrl);
+              document.getElementById('voteCard').innerHTML = '<div class="vote-auth-msg">Для участия в голосовании необходимо <a href="' + loginUrl + '">войти</a> или <a href="' + regUrl + '">зарегистрироваться</a>. После авторизации вы вернётесь к этому голосованию.</div><div class="back-links" style="margin-top:1rem;justify-content:center;"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>';
             } else { renderVoteForm(poll, authorName); }
           }).catch(function() { renderVoteForm(poll, authorName); });
         } else { renderVoteForm(poll, authorName); }

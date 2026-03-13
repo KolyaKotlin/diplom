@@ -83,6 +83,8 @@
           html += '</div>';
         });
         html += '<canvas id="pollChart" style="margin-top:2rem;max-height:280px;"></canvas>';
+        html += '<h3 style="font-size:1rem;font-weight:600;margin:2rem 0 1rem;color:var(--text);">Информационная плоскость</h3>';
+        html += '<canvas id="infoChart" style="margin-top:0.5rem;max-height:240px;"></canvas>';
 
         // Export buttons — только для автора
         if (d.isAuthor) {
@@ -113,7 +115,20 @@
         new Chart(document.getElementById('pollChart'), {
           type: 'doughnut',
           data: { labels: labels, datasets: [{ data: data, backgroundColor: labels.map(function(_,i) { return colors[i%colors.length]; }), borderColor: isDark ? '#1e293b' : '#fff', borderWidth: 2 }] },
-          options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: isDark ? '#f1f5f9' : '#0f172a', padding: 16 } } } }
+          options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: isDark ? '#f1f5f9' : '#0f172a', padding: 16 }, display: labels.length <= 10 } } }
+        });
+        var probs = data.map(function(v) { var p = v / total || 0.001; return Math.log2(p); });
+        new Chart(document.getElementById('infoChart'), {
+          type: 'bar',
+          data: { labels: labels, datasets: [{ label: 'log₂(p)', data: probs, backgroundColor: labels.map(function(_,i) { return colors[i%colors.length]; }), borderRadius: 6 }] },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { title: { display: true, text: 'log₂(вероятность)' }, grid: { color: isDark ? '#334155' : '#f1f5f9' }, ticks: { color: isDark ? '#94a3b8' : '#64748b' } },
+              x: { grid: { display: false }, ticks: { color: isDark ? '#94a3b8' : '#64748b', maxRotation: 45, minRotation: 45, display: labels.length <= 8 } }
+            }
+          }
         });
       });
     }

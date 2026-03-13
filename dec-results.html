@@ -173,7 +173,7 @@
             plugins: { legend: { display: false } },
             scales: {
               y: { beginAtZero: true, max: scaleMax, grid: { color: isDark ? '#334155' : '#f1f5f9' }, ticks: { color: isDark ? '#94a3b8' : '#64748b' } },
-              x: { grid: { display: false }, ticks: { color: isDark ? '#94a3b8' : '#64748b' } }
+              x: { grid: { display: false }, ticks: { color: isDark ? '#94a3b8' : '#64748b', display: labels.length <= 8, maxRotation: 45, minRotation: 45 } }
             }
           }
         });
@@ -186,7 +186,7 @@
             plugins: { legend: { display: false } },
             scales: {
               y: { beginAtZero: true, max: scaleMax, grid: { color: isDark ? '#334155' : '#f1f5f9' }, ticks: { color: isDark ? '#94a3b8' : '#64748b' } },
-              x: { grid: { color: isDark ? '#334155' : '#f1f5f9' }, ticks: { color: isDark ? '#94a3b8' : '#64748b' } }
+              x: { grid: { color: isDark ? '#334155' : '#f1f5f9' }, ticks: { color: isDark ? '#94a3b8' : '#64748b', display: labels.length <= 8, maxRotation: 45, minRotation: 45 } }
             }
           }
         });

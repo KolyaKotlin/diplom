@@ -437,17 +437,8 @@ _MODERATION_PROMPT = (
     "Если текст нарушает правила — ответь: REJECT"
 )
 
-import re as _re
-_BAD_WORDS = _re.compile(
-    r'(бля[дт]ь?|бля|[хx][уy][йеёия]|пизд|ебан|ёбан|еба[тл]|сук[аи]|мудак|мудил'
-    r'|дерьм|гандон|пидор|пидар|шлюх|хуес|залуп|манд[аоуе]|долбоёб|долбоеб'
-    r'|уёбок|уебок|уёбищ|наху[йея]|нахер|похуй|отпизд|выеб|трахн'
-    r'|убить|убей|сдохн|зарежу|застрел|взорв[аеу]|повес)',
-    _re.IGNORECASE | _re.UNICODE
-)
-
 def _moderate_content(title, description='', options=None):
-    """AI content moderation. Returns (ok: bool, reason: str|None)."""
+    """AI content moderation. Returns (ok: bool, reason: str|None). Только ИИ — без списка бан-слов."""
     parts = []
     if title:
         parts.append(f"Заголовок: {title}")
@@ -457,12 +448,6 @@ def _moderate_content(title, description='', options=None):
         opts_text = ', '.join(o if isinstance(o, str) else o.get('text', '') for o in options)
         parts.append(f"Варианты: {opts_text}")
     full_text = '\n'.join(parts)
-
-    bad = _BAD_WORDS.search(full_text)
-    if bad:
-        reason = 'Нецензурная лексика или призыв к насилию'
-        print(f'[Moderation] LOCAL REJECT: matched "{bad.group()}" in text')
-        return False, reason
 
     try:
         print(f'[Moderation] AI checking: {full_text[:100]}')
