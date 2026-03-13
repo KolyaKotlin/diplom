@@ -489,8 +489,11 @@ function renderWiz(step) {
 function saveWiz1() { wiz.title = gv('#wTitle'); wiz.description = gv('#wDesc'); wiz.alternatives = gvAll('.w-alt'); _saveDraft(); }
 function _autoResizeTextarea(el) {
   if (!el) return;
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 300) + 'px';
+  el.style.overflowY = 'hidden';
+  el.style.height = '0';
+  var h = Math.max(el.scrollHeight, 64);
+  el.style.height = Math.min(h, 300) + 'px';
+  el.style.overflowY = h > 300 ? 'auto' : 'hidden';
 }
 function saveWiz2() { wiz.criteria = gvAll('.w-crit'); _saveDraft(); }
 function saveWiz3() {
@@ -567,7 +570,7 @@ function renderPolls(el) {
       document.getElementById('pollSlugEdit').value = '';
       document.getElementById('pollTitle').value = (p.title || '') + ' (копия)';
       document.getElementById('pollDesc').value = p.description || '';
-      _autoResizeTextarea(document.getElementById('pollDesc'));
+      setTimeout(function() { _autoResizeTextarea(document.getElementById('pollDesc')); }, 50);
       document.getElementById('pollMultiple').checked = p.multipleChoice;
       document.getElementById('pollAuthOnly').checked = p.authOnly;
       document.getElementById('pollShowResults').value = p.showResults || 'always';
@@ -637,7 +640,7 @@ function openCreatePoll() {
           document.getElementById('pollSlugEdit').value = '';
           document.getElementById('pollTitle').value = parsed.title || '';
           document.getElementById('pollDesc').value = parsed.description || '';
-          _autoResizeTextarea(document.getElementById('pollDesc'));
+          setTimeout(function() { _autoResizeTextarea(document.getElementById('pollDesc')); }, 50);
           document.getElementById('pollMultiple').checked = !!parsed.multipleChoice;
           document.getElementById('pollAuthOnly').checked = !!parsed.authOnly;
           document.getElementById('pollShowResults').value = parsed.showResults || 'always';
@@ -662,6 +665,7 @@ function openCreatePoll() {
   document.getElementById('createPollForm').reset();
   document.getElementById('modalTitle').textContent = 'Новое голосование';
   document.getElementById('pollSlugEdit').value = '';
+  setTimeout(function() { _autoResizeTextarea(document.getElementById('pollDesc')); }, 50);
   var cont = document.getElementById('optionsContainer');
   cont.innerHTML = '<div class="option-row"><input type="text" class="poll-option" placeholder="Вариант 1" required><button type="button" class="remove-option">&times;</button></div>' +
     '<div class="option-row"><input type="text" class="poll-option" placeholder="Вариант 2" required><button type="button" class="remove-option">&times;</button></div>';
@@ -677,7 +681,7 @@ function openEditPoll(slug) {
     document.getElementById('pollSlugEdit').value = slug;
     document.getElementById('pollTitle').value = p.title;
     document.getElementById('pollDesc').value = p.description || '';
-    _autoResizeTextarea(document.getElementById('pollDesc'));
+    setTimeout(function() { _autoResizeTextarea(document.getElementById('pollDesc')); }, 50);
     document.getElementById('pollMultiple').checked = p.multipleChoice;
     document.getElementById('pollAuthOnly').checked = p.authOnly;
     document.getElementById('pollShowResults').value = p.showResults || 'always';
@@ -699,6 +703,8 @@ function openEditPoll(slug) {
   var pollDesc = document.getElementById('pollDesc');
   if (pollDesc) {
     pollDesc.addEventListener('input', function() { _autoResizeTextarea(this); _savePollDraft(); });
+    pollDesc.addEventListener('keyup', function() { _autoResizeTextarea(this); });
+    pollDesc.addEventListener('paste', function() { var t = this; setTimeout(function() { _autoResizeTextarea(t); }, 10); });
   }
   ['pollTitle','pollDesc','pollDeadline','pollMaxVotes'].forEach(function(id) {
     var el = document.getElementById(id);

@@ -159,7 +159,8 @@ a:hover { color: var(--primary-hover); }
 /* ======================== */
 input[type="email"],
 input[type="password"],
-input[type="text"] {
+input[type="text"],
+textarea {
   width: 100%;
   padding: 0.75rem 1rem;
   font-size: 0.9375rem;
@@ -169,8 +170,16 @@ input[type="text"] {
   background: var(--bg-card);
   color: var(--text);
   transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
 }
-input:focus {
+textarea {
+  min-height: 4rem;
+  resize: none;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+input:focus,
+textarea:focus {
   outline: none;
   border-color: var(--primary-500);
   box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
