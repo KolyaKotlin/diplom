@@ -705,6 +705,17 @@ input[type="date"]:focus {
   .hero-section { padding: 1.5rem 1rem; }
   .hero-form-card { padding: 1.75rem 1.25rem; }
   .how-section { padding: 2.5rem 1rem; }
+
+  /* Авторизация на мобильных — чуть удобнее */
+  .auth-right { padding: 1.25rem 1rem; align-items: center; }
+  .auth-box { padding: 1.5rem 1.25rem; }
+  .auth-box h1 { font-size: 1.5rem; margin-bottom: 0.125rem; }
+  .auth-box .sub { margin-bottom: 1.5rem; font-size: 0.875rem; }
+  .auth-form .field { margin-bottom: 1.25rem; }
+  .auth-form .field label { margin-bottom: 0.5rem; font-size: 0.8125rem; }
+  .auth-form .btn { padding: 0.875rem; margin-top: 0.5rem; }
+  .oauth-divider { margin: 1rem 0; }
+  .auth-footer-text { margin-top: 1.25rem; }
 }
 
 /* ======================== */
