@@ -8,12 +8,12 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
   <style>
     .results-page { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:4rem 1.5rem 1.5rem; background:var(--bg-page); }
-    .results-card { width:100%; max-width:36rem; background:var(--bg-card); border-radius:1.25rem; border:1px solid var(--border); padding:2.5rem 2rem; box-shadow:var(--shadow-md); }
+    .results-card { width:100%; max-width:36rem; min-width:0; background:var(--bg-card); border-radius:1.25rem; border:1px solid var(--border); padding:2.5rem 2rem; box-shadow:var(--shadow-md); overflow:hidden; }
     .results-title { font-size:1.375rem; font-weight:700; margin-bottom:0.5rem; color:var(--text); }
     .results-meta { font-size:0.875rem; color:var(--text-muted); margin-bottom:2rem; }
     .result-row { margin-bottom:1.25rem; }
-    .result-head { display:flex; justify-content:space-between; margin-bottom:0.375rem; font-size:0.9375rem; }
-    .result-text { font-weight:500; color:var(--text); }
+    .result-head { display:flex; justify-content:space-between; margin-bottom:0.375rem; font-size:0.9375rem; flex-wrap:wrap; gap:0.25rem; }
+    .result-text { font-weight:500; color:var(--text); word-wrap:break-word; overflow-wrap:break-word; min-width:0; }
     .result-pct { color:var(--primary); font-weight:600; }
     .result-bar-bg { height:0.625rem; background:var(--primary-50); border-radius:0.375rem; overflow:hidden; }
     .result-bar { height:100%; background:var(--primary); border-radius:0.375rem; transition:width 0.8s cubic-bezier(0.4,0,0.2,1); }

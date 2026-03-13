@@ -9,16 +9,16 @@
   <style>
     .res-page { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:4rem 1.5rem 1.5rem; background:var(--bg-page); }
     .res-card { width:100%; max-width:44rem; min-width:0; background:var(--bg-card); border-radius:1.25rem; border:1px solid var(--border); padding:2.5rem 2rem; box-shadow:var(--shadow-md); }
-    .res-title { font-size:1.375rem; font-weight:700; margin-bottom:0.5rem; color:var(--text); }
+    .res-title { font-size:1.375rem; font-weight:700; margin-bottom:0.5rem; color:var(--text); word-wrap:break-word; overflow-wrap:break-word; }
     .res-meta { font-size:0.875rem; color:var(--text-muted); margin-bottom:2rem; }
     .winner { background:var(--hero-gradient); border-radius:1rem; padding:1.75rem; text-align:center; color:#fff; margin-bottom:2rem; position:relative; overflow:hidden; }
     .winner::before { content:''; position:absolute; top:-50%; right:-50%; width:100%; height:100%; background:radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%); }
     .winner-label { font-size:0.75rem; text-transform:uppercase; letter-spacing:0.08em; opacity:0.8; margin-bottom:0.375rem; }
-    .winner-name { font-size:1.5rem; font-weight:800; }
+    .winner-name { font-size:1.5rem; font-weight:800; word-wrap:break-word; overflow-wrap:break-word; }
     .winner-score { font-size:1rem; opacity:0.9; margin-top:0.375rem; }
     .rank-row { margin-bottom:1.25rem; }
     .rank-head { display:flex; justify-content:space-between; margin-bottom:0.375rem; font-size:0.9375rem; }
-    .rank-text { font-weight:500; color:var(--text); }
+    .rank-text { font-weight:500; color:var(--text); word-wrap:break-word; overflow-wrap:break-word; min-width:0; }
     .rank-val { color:var(--primary); font-weight:600; }
     .rank-bar-bg { height:0.625rem; background:var(--primary-50); border-radius:0.375rem; overflow:hidden; }
     .rank-bar { height:100%; background:var(--primary); border-radius:0.375rem; transition:width 0.8s cubic-bezier(0.4,0,0.2,1); }

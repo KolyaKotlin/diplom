@@ -7,13 +7,13 @@
   <link rel="stylesheet" href="css/styles.css">
   <style>
     .respond-page { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:4rem 1.5rem 1.5rem; background:var(--bg-page); }
-    .respond-card { width:100%; max-width:36rem; background:var(--bg-card); border-radius:1.25rem; border:1px solid var(--border); padding:2.5rem 2rem; box-shadow:var(--shadow-md); }
-    .respond-author { background:var(--primary-50); border:1px solid var(--primary-100); border-radius:0.75rem; padding:0.875rem 1rem; font-size:0.9375rem; margin-bottom:1.5rem; line-height:1.6; }
-    .respond-title { font-size:1.375rem; font-weight:700; margin-bottom:0.5rem; color:var(--text); }
-    .respond-desc { color:var(--text-muted); font-size:0.9375rem; margin-bottom:1.5rem; }
+    .respond-card { width:100%; max-width:36rem; min-width:0; background:var(--bg-card); border-radius:1.25rem; border:1px solid var(--border); padding:2.5rem 2rem; box-shadow:var(--shadow-md); overflow:hidden; }
+    .respond-author { background:var(--primary-50); border:1px solid var(--primary-100); border-radius:0.75rem; padding:0.875rem 1rem; font-size:0.9375rem; margin-bottom:1.5rem; line-height:1.6; word-wrap:break-word; overflow-wrap:break-word; }
+    .respond-title { font-size:1.375rem; font-weight:700; margin-bottom:0.5rem; color:var(--text); word-wrap:break-word; overflow-wrap:break-word; }
+    .respond-desc { color:var(--text-muted); font-size:0.9375rem; margin-bottom:1.5rem; word-wrap:break-word; overflow-wrap:break-word; }
     .alt-block { background:var(--bg-page); border:1px solid var(--border); border-radius:0.75rem; padding:1.25rem; margin-bottom:1rem; transition:box-shadow 0.2s; }
     .alt-block:hover { box-shadow:var(--shadow-sm); }
-    .alt-name { font-weight:600; font-size:1rem; margin-bottom:0.75rem; color:var(--text); }
+    .alt-name { font-weight:600; font-size:1rem; margin-bottom:0.75rem; color:var(--text); word-wrap:break-word; overflow-wrap:break-word; }
     .crit-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.625rem; padding:0.25rem 0; flex-wrap:wrap; gap:0.5rem; }
     .crit-name { font-size:0.875rem; color:var(--text-muted); flex:1; min-width:0; word-break:break-word; }
     .stars { display:flex; gap:0.25rem; flex-shrink:0; }

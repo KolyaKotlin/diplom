@@ -47,7 +47,17 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html { scrollbar-gutter: stable; }
+html { scrollbar-gutter: stable; overflow-x: hidden; }
+
+/* Длинный текст — везде перенос и без overflow */
+.text-wrap, .vote-title, .vote-desc, .vote-option-text, .vote-author,
+.respond-title, .respond-desc, .respond-author, .alt-name,
+.result-text, .result-head, .poll-title, .share-preview-text {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
+}
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -55,6 +65,7 @@ body {
   line-height: 1.6;
   color: var(--text);
   background: var(--bg);
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
