@@ -1,4 +1,5 @@
 import os, io, sqlite3, hashlib, hmac, secrets, uuid, base64, json
+from xml.sax.saxutils import escape as _xml_escape
 from functools import wraps
 from datetime import datetime
 
@@ -1592,8 +1593,10 @@ def _get_dec_data(slug):
         rrows = conn.execute("""SELECT u.first_name, u.last_name FROM decision_responses dr
             JOIN users u ON dr.user_id = u.id WHERE dr.decision_id=?""", (dc['id'],)).fetchall()
         respondents = [r['first_name'] + ' ' + r['last_name'] for r in rrows]
+    scale_max = int(dc['scale_max']) if dc['scale_max'] else 5
     conn.close()
-    return {"title": dc['title'], "responses": rc, "ranking": ranking, "details": details,
+    return {"title": dc['title'], "description": (dc['description'] or '').strip(), "slug": dc['slug'],
+            "scale_max": scale_max, "responses": rc, "ranking": ranking, "details": details,
             "alts": alts, "crits": crits, "respondents": respondents, "is_author": is_author}
 
 
@@ -1603,7 +1606,7 @@ def _get_poll_data(slug):
     if not p:
         conn.close(); return None
     is_author = session.get('user_id') == p['user_id']
-    opts = conn.execute("SELECT * FROM poll_options WHERE poll_id=? ORDER BY id", (p['id'],)).fetchall()
+    opts = conn.execute("SELECT * FROM poll_options WHERE poll_id=? ORDER BY sort_order, id", (p['id'],)).fetchall()
     vc = conn.execute("SELECT COUNT(DISTINCT COALESCE(user_id, fingerprint)) as c FROM poll_votes WHERE poll_id=?", (p['id'],)).fetchone()['c']
     results = []
     for o in opts:
@@ -1615,19 +1618,22 @@ def _get_poll_data(slug):
             voters = [r['first_name'] + ' ' + r['last_name'] for r in vrows]
         results.append({"text": o['text'], "votes": cnt, "voters": voters})
     conn.close()
-    return {"title": p['title'], "totalVoters": vc, "results": results, "is_author": is_author}
+    return {"title": p['title'], "description": (p['description'] or '').strip(), "slug": p['slug'],
+            "multipleChoice": bool(p['multiple_choice']), "optionTexts": [o['text'] for o in opts],
+            "totalVoters": vc, "results": results, "is_author": is_author}
 
 
-def _decision_winner_text(ranking):
+def _decision_winner_text(ranking, scale_max=5):
     """Return 'Лучший вариант' string, handling ties."""
     if not ranking:
         return ""
+    sm = int(scale_max) if scale_max else 5
     best_score = ranking[0]['score']
     winners = [r for r in ranking if abs(r['score'] - best_score) < 0.01]
     if len(winners) == 1:
-        return f"Лучший вариант — {winners[0]['name']} ({best_score:.2f}/5)"
+        return f"Лучший вариант — {winners[0]['name']} ({best_score:.2f}/{sm})"
     names = ", ".join(w['name'] for w in winners)
-    return f"Лучшие варианты (равный балл {best_score:.2f}/5) — {names}"
+    return f"Лучшие варианты (равный балл {best_score:.2f}/{sm}) — {names}"
 
 
 def _poll_winner_text(results):
@@ -1672,11 +1678,97 @@ def _register_pdf_font():
     return ('Helvetica', 'Helvetica-Bold')
 
 
+def _docx_apply_export_colontitul(doc, code, kind_noun):
+    """Верхний колонтитул: «Код …», нижний: только код по центру. kind_noun: «голосования»|«оценки»."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt, RGBColor
+    sec = doc.sections[0]
+    h = sec.header
+    hp = h.paragraphs[0] if h.paragraphs else h.add_paragraph()
+    hp.text = f'Код {kind_noun}: {code}'
+    hp.paragraph_format.space_before = Pt(0)
+    hp.paragraph_format.space_after = Pt(0)
+    if hp.runs:
+        hp.runs[0].font.size = Pt(9)
+        hp.runs[0].font.color.rgb = RGBColor(0x30, 0x41, 0x59)
+    fp = sec.footer.paragraphs[0] if sec.footer.paragraphs else sec.footer.add_paragraph()
+    fp.text = code
+    fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if fp.runs:
+        fp.runs[0].font.size = Pt(9)
+        fp.runs[0].font.color.rgb = RGBColor(0x47, 0x55, 0x70)
+
+
+def _pdf_draw_export_colontitul(canvas, doc, code, font_name):
+    from reportlab.lib.units import cm
+    canvas.saveState()
+    try:
+        w, h = doc.pagesize
+        lm = doc.leftMargin
+        usable_w = w - lm - doc.rightMargin
+        canvas.setFont(font_name, 8)
+        canvas.setFillColorRGB(0.28, 0.33, 0.41)
+        canvas.drawString(lm, h - 0.65 * cm, f'Код: {code}')
+        canvas.drawRightString(lm + usable_w, 0.55 * cm, code)
+    finally:
+        canvas.restoreState()
+
+
+def _pdf_col_widths(n_cols, page_w, lm, rm, first_frac=0.28):
+    usable = max(40, page_w - lm - rm)
+    if n_cols <= 1:
+        return [usable]
+    first = usable * first_frac
+    rest_n = n_cols - 1
+    rest_each = max(28, (usable - first) / rest_n)
+    # подгоняем, чтобы сумма не превышала usable
+    total = first + rest_each * rest_n
+    if total > usable:
+        scale = usable / total
+        first *= scale
+        rest_each *= scale
+    return [first] + [rest_each] * rest_n
+
+
+def _pdf_wrapped_result_table(matrix, col_widths, font_n, font_b, font_size=7.5):
+    from reportlab.platypus import Table, TableStyle, Paragraph
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib import colors
+    lh_h, lh_c = font_size + 3, font_size + 2
+    ps_h = ParagraphStyle('pdf_th', fontName=font_b, fontSize=font_size + 0.5, leading=lh_h)
+    ps_c = ParagraphStyle('pdf_td', fontName=font_n, fontSize=font_size, leading=lh_c)
+    body = []
+    for ri, row in enumerate(matrix):
+        out = []
+        for cell in row:
+            raw = '' if cell is None else str(cell)
+            ps = ps_h if ri == 0 else ps_c
+            out.append(Paragraph(_xml_escape(raw).replace('\n', '<br/>'), ps))
+        body.append(out)
+    tbl = Table(body, colWidths=col_widths, repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#EEF2FF')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1E293B')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
+        ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor('#CBD5E1')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.35, colors.HexColor('#E2E8F0')),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+    ]))
+    return tbl
+
+
 def _build_review_context(d):
     """Build context string from decision data for AI prompts."""
     ranking = d['ranking']
+    sm = d.get('scale_max', 5)
     context = f"Вопрос: {d['title']}. Ответов: {d['responses']}. "
-    context += "Рейтинг: " + ", ".join([f"{r['name']} ({r['score']:.2f}/5)" for r in ranking]) + ". "
+    context += "Рейтинг: " + ", ".join([f"{r['name']} ({r['score']:.2f}/{sm})" for r in ranking]) + ". "
     context += "Критерии: " + ", ".join([c['name'] for c in d['crits']]) + "."
     for r in ranking[:3]:
         parts = [f"{c['name']}: {d['details'].get((r['id'], c['id']), 0):.1f}" for c in d['crits']]
@@ -1722,7 +1814,7 @@ def _build_review_text(d):
     best_score = winner['score']
     winners = [r for r in ranking if abs(r['score'] - best_score) < 0.01]
     is_tie = len(winners) > 1
-    winner_line = _decision_winner_text(ranking)
+    winner_line = _decision_winner_text(ranking, d.get('scale_max', 5))
 
     context = _build_review_context(d)
     sys_prompt = _build_review_prompt(d, winner_line, is_tie, winners, best_score)
@@ -1759,6 +1851,164 @@ def _build_review_text(d):
     return review
 
 
+def _export_poll_questionnaire(d, slug, fmt):
+    """Тема, описание и варианты для печати (без результатов)."""
+    code = d['slug']
+    opts = d.get('optionTexts') or []
+    mc = d.get('multipleChoice')
+    if fmt == 'docx':
+        from docx import Document
+        from docx.shared import Pt, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        doc = Document()
+        doc.styles['Normal'].font.name = 'Calibri'
+        doc.styles['Normal'].font.size = Pt(11)
+        _docx_apply_export_colontitul(doc, code, 'голосования')
+        doc.add_heading(d['title'], level=1)
+        p0 = doc.add_paragraph()
+        r0 = p0.add_run('Бланк для бумажного голосования · ')
+        r0.bold = True
+        r1 = p0.add_run('можно выбрать несколько ответов.' if mc else 'отметьте один вариант.')
+        r1.font.color.rgb = RGBColor(0x71, 0x85, 0x9A)
+        if d.get('description'):
+            doc.add_paragraph(d['description'])
+        doc.add_heading('Варианты ответов', level=2)
+        for i, t in enumerate(opts, 1):
+            doc.add_paragraph(f'☐  {i}.  {t}')
+        doc.add_paragraph('')
+        fp = doc.add_paragraph('ФИО: _______________________________    Дата: ______________    Подпись: ______________')
+        fp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        buf = io.BytesIO(); doc.save(buf); buf.seek(0)
+        from flask import send_file
+        return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                         as_attachment=True, download_name=f'poll-blank-{slug}.docx')
+    elif fmt == 'pdf':
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        fn, fb = _register_pdf_font()
+        buf = io.BytesIO()
+        docp = SimpleDocTemplate(buf, pagesize=A4, leftMargin=1.7 * cm, rightMargin=1.7 * cm,
+                                 topMargin=2.1 * cm, bottomMargin=2 * cm)
+        def on_pg(c, d_):
+            _pdf_draw_export_colontitul(c, d_, code, fn)
+        st = getSampleStyleSheet()
+        for s in st.byName.values():
+            s.fontName = fn
+        el = []
+        el.append(Paragraph(_xml_escape(d['title']), ParagraphStyle('PT', parent=st['Title'], fontName=fn, fontSize=17, textColor=colors.HexColor('#0F172A'), spaceAfter=8)))
+        hint = 'Бланк для бумажного голосования. Можно выбрать несколько ответов.' if mc else 'Бланк для бумажного голосования. Отметьте один вариант.'
+        el.append(Paragraph(f'<i>{_xml_escape(hint)}</i>', ParagraphStyle('PH', parent=st['Normal'], fontName=fn, fontSize=10, textColor=colors.HexColor('#64748B'), spaceAfter=10)))
+        if d.get('description'):
+            el.append(Paragraph(_xml_escape(d['description']), ParagraphStyle('PD', parent=st['Normal'], fontName=fn, fontSize=10.5, leading=14, spaceAfter=14)))
+        el.append(Paragraph('<b>Варианты ответов</b>', ParagraphStyle('H2', parent=st['Heading2'], fontName=fb, fontSize=12, spaceAfter=6)))
+        for i, t in enumerate(opts, 1):
+            el.append(Paragraph(f'☐  <b>{i}.</b>  {_xml_escape(t)}', ParagraphStyle('Opt', parent=st['Normal'], fontName=fn, fontSize=10.5, leading=14, leftIndent=0, spaceAfter=5)))
+        el.append(Spacer(1, 16))
+        el.append(Paragraph(_xml_escape('ФИО: _______________________________    Дата: ______________    Подпись: ______________'), st['Normal']))
+        docp.build(el, onFirstPage=on_pg, onLaterPages=on_pg)
+        buf.seek(0)
+        from flask import send_file
+        return send_file(buf, mimetype='application/pdf', as_attachment=True, download_name=f'poll-blank-{slug}.pdf')
+    return jsonify({"error": "Формат не поддержан"}), 400
+
+
+def _export_decision_questionnaire(d, slug, fmt):
+    """Тема, альтернативы, критерии и матрица для ручного заполнения."""
+    code = d['slug']
+    sm = int(d.get('scale_max', 5))
+    alts = d['alts']
+    crits = d['crits']
+    if fmt == 'docx':
+        from docx import Document
+        from docx.shared import Pt, RGBColor
+        doc = Document()
+        doc.styles['Normal'].font.name = 'Calibri'
+        doc.styles['Normal'].font.size = Pt(11)
+        _docx_apply_export_colontitul(doc, code, 'оценки')
+        doc.add_heading(d['title'], level=1)
+        meta = doc.add_paragraph()
+        mr = meta.add_run(f'Бланк для печати · оцените каждую альтернативу по критериям (шкала 1–{sm}).')
+        mr.italic = True
+        mr.font.color.rgb = RGBColor(0x71, 0x85, 0x9A)
+        if d.get('description'):
+            doc.add_paragraph(d['description'])
+        doc.add_heading('Альтернативы', level=2)
+        for i, a in enumerate(alts, 1):
+            doc.add_paragraph(f'{i}. {a["name"]}')
+        doc.add_heading('Критерии оценки', level=2)
+        for i, c in enumerate(crits, 1):
+            doc.add_paragraph(f'{i}. {c["name"]}')
+        doc.add_heading('Матрица оценок', level=2)
+        cols = len(crits) + 1
+        table = doc.add_table(rows=1, cols=cols, style='Light Grid Accent 1')
+        hdr = table.rows[0].cells
+        hdr[0].text = 'Альтернатива'
+        for j, c in enumerate(crits):
+            hdr[j + 1].text = c['name']
+        for a in alts:
+            row = table.add_row().cells
+            row[0].text = a['name']
+            for j in range(len(crits)):
+                row[j + 1].text = '—'
+        doc.add_paragraph('')
+        doc.add_paragraph(f'Участник: ________________________________   Дата: ______________   (оценки от 1 до {sm})')
+        buf = io.BytesIO(); doc.save(buf); buf.seek(0)
+        from flask import send_file
+        return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                         as_attachment=True, download_name=f'decision-blank-{slug}.docx')
+    elif fmt == 'pdf':
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        fn, fb = _register_pdf_font()
+        n_crit = len(crits)
+        use_land = n_crit >= 4
+        page = landscape(A4) if use_land else A4
+        side = 1.65 * cm if use_land else 1.7 * cm
+        buf = io.BytesIO()
+        docp = SimpleDocTemplate(buf, pagesize=page, leftMargin=side, rightMargin=side,
+                                 topMargin=2.15 * cm, bottomMargin=2 * cm)
+        def on_pg(c, d_):
+            _pdf_draw_export_colontitul(c, d_, code, fn)
+        st = getSampleStyleSheet()
+        for s in st.byName.values():
+            s.fontName = fn
+        el = []
+        el.append(Paragraph(_xml_escape(d['title']), ParagraphStyle('PT', parent=st['Title'], fontName=fn, fontSize=16 if use_land else 17, textColor=colors.HexColor('#0F172A'), spaceAfter=6)))
+        el.append(Paragraph(_xml_escape(f'Бланк оценки альтернатив по критериям (шкала 1–{sm}).'),
+                            ParagraphStyle('PH', parent=st['Normal'], fontName=fn, fontSize=10, textColor=colors.HexColor('#64748B'), spaceAfter=10)))
+        if d.get('description'):
+            el.append(Paragraph(_xml_escape(d['description']), ParagraphStyle('PD', parent=st['Normal'], fontName=fn, fontSize=10, leading=13, spaceAfter=12)))
+        el.append(Paragraph('<b>Альтернативы</b>', ParagraphStyle('H', parent=st['Heading2'], fontName=fb, fontSize=11, spaceAfter=4)))
+        for i, a in enumerate(alts, 1):
+            el.append(Paragraph(f'<b>{i}.</b> {_xml_escape(a["name"])}', ParagraphStyle('LI', parent=st['Normal'], fontName=fn, fontSize=10, leading=13, spaceAfter=3)))
+        el.append(Spacer(1, 8))
+        el.append(Paragraph('<b>Критерии</b>', ParagraphStyle('H2', parent=st['Heading2'], fontName=fb, fontSize=11, spaceAfter=4)))
+        for i, c in enumerate(crits, 1):
+            el.append(Paragraph(f'<b>{i}.</b> {_xml_escape(c["name"])}', ParagraphStyle('LI2', parent=st['Normal'], fontName=fn, fontSize=10, leading=13, spaceAfter=3)))
+        el.append(Spacer(1, 10))
+        el.append(Paragraph('<b>Матрица для оценок</b>', ParagraphStyle('H3', parent=st['Heading2'], fontName=fb, fontSize=11, spaceAfter=6)))
+        head = ['Альтернатива'] + [c['name'] for c in crits]
+        matrix = [head]
+        for a in alts:
+            matrix.append([a['name']] + ['—'] * len(crits))
+        fs = 6 if n_crit >= 9 else (6.8 if n_crit >= 6 else 7.8)
+        cw = _pdf_col_widths(len(head), page[0], docp.leftMargin, docp.rightMargin, first_frac=0.26 if n_crit else 0.9)
+        el.append(_pdf_wrapped_result_table(matrix, cw, fn, fb, font_size=fs))
+        el.append(Spacer(1, 14))
+        el.append(Paragraph(_xml_escape(f'Участник: _______________________   Дата: __________  (оценки от 1 до {sm})'), st['Normal']))
+        docp.build(el, onFirstPage=on_pg, onLaterPages=on_pg)
+        buf.seek(0)
+        from flask import send_file
+        return send_file(buf, mimetype='application/pdf', as_attachment=True, download_name=f'decision-blank-{slug}.pdf')
+    return jsonify({"error": "Формат не поддержан"}), 400
+
+
 @app.route('/api/decisions/<slug>/export/<fmt>')
 def export_decision(slug, fmt):
     d = _get_dec_data(slug)
@@ -1766,10 +2016,15 @@ def export_decision(slug, fmt):
         return jsonify({"error": "Не найдено"}), 404
     if not d.get('is_author'):
         return jsonify({"error": "Экспорт доступен только автору голосования"}), 403
+    if request.args.get('mode') == 'questionnaire':
+        if fmt not in ('pdf', 'docx'):
+            return jsonify({"error": "Для бланка доступны только PDF и Word"}), 400
+        return _export_decision_questionnaire(d, slug, fmt)
     detailed = request.args.get('mode') == 'detailed'
     review_text = _build_review_text(d) if detailed else ""
 
-    winner_line = _decision_winner_text(d['ranking'])
+    sm = d.get('scale_max', 5)
+    winner_line = _decision_winner_text(d['ranking'], sm)
 
     if fmt == 'txt':
         lines = ["Результаты: " + d['title'], "Ответов: " + str(d['responses']), ""]
@@ -1778,7 +2033,7 @@ def export_decision(slug, fmt):
             lines.append("")
         lines.append("Рейтинг:")
         for i, r in enumerate(d['ranking']):
-            lines.append(f"  {i+1}. {r['name']} — {r['score']:.2f}/5")
+            lines.append(f"  {i+1}. {r['name']} — {r['score']:.2f}/{sm}")
         lines.append("")
         lines.append("Детализация по критериям:")
         header = [""] + [c['name'] for c in d['crits']]
@@ -1844,12 +2099,12 @@ def export_decision(slug, fmt):
 
     elif fmt == 'docx':
         from docx import Document
-        from docx.shared import Pt, Inches, Cm, RGBColor
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.shared import Pt, RGBColor
         doc = Document()
         style = doc.styles['Normal']
-        style.font.name = 'Arial'
+        style.font.name = 'Calibri'
         style.font.size = Pt(11)
+        _docx_apply_export_colontitul(doc, d['slug'], 'оценки')
         doc.add_heading(d['title'], level=1)
         doc.add_paragraph(f"Ответов: {d['responses']}")
         if winner_line:
@@ -1857,16 +2112,16 @@ def export_decision(slug, fmt):
             wr = wp.add_run(winner_line)
             wr.bold = True
             wr.font.size = Pt(13)
-            wr.font.color.rgb = RGBColor(0x25, 0x63, 0xEB)
+            wr.font.color.rgb = RGBColor(0x37, 0x99, 0xF6)
         doc.add_heading("Рейтинг", level=2)
         for i, r in enumerate(d['ranking']):
             p = doc.add_paragraph()
             run = p.add_run(f"{i+1}. {r['name']}")
             run.bold = True
-            p.add_run(f" — {r['score']:.2f} из 5")
-        doc.add_heading("Детализация", level=2)
+            p.add_run(f" — {r['score']:.2f} из {sm}")
+        doc.add_heading("Детализация по критериям", level=2)
         cols = len(d['crits']) + 1
-        table = doc.add_table(rows=1, cols=cols, style='Light Grid Accent 1')
+        table = doc.add_table(rows=1, cols=cols, style='Medium Shading 1 Accent 1')
         hdr = table.rows[0].cells
         hdr[0].text = "Вариант"
         for j, c in enumerate(d['crits']):
@@ -1876,13 +2131,19 @@ def export_decision(slug, fmt):
             row[0].text = r['name']
             for j, c in enumerate(d['crits']):
                 row[j+1].text = f"{d['details'].get((r['id'], c['id']), 0):.1f}"
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.size = Pt(9 if cols > 6 else 10)
         if d.get('respondents'):
             doc.add_heading("Участники", level=2)
             doc.add_paragraph(", ".join(d['respondents']))
         if review_text:
             doc.add_heading("Рецензия", level=2)
             rp = doc.add_paragraph(review_text)
-            rp.style.font.size = Pt(11)
+            for run in rp.runs:
+                run.font.size = Pt(10)
         buf = io.BytesIO()
         doc.save(buf); buf.seek(0)
         from flask import send_file
@@ -1890,35 +2151,44 @@ def export_decision(slug, fmt):
                          as_attachment=True, download_name=f'results-{slug}.docx')
 
     elif fmt == 'pdf':
-        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib import colors
         from reportlab.lib.units import cm
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
         _FONT, _FONT_BOLD = _register_pdf_font()
-
+        code = d['slug']
+        n_crit = len(d['crits'])
+        use_land = n_crit >= 4
+        page = landscape(A4) if use_land else A4
+        side = 1.65 * cm if use_land else 1.7 * cm
         buf = io.BytesIO()
-        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.5*cm, bottomMargin=1.5*cm)
+        doc = SimpleDocTemplate(buf, pagesize=page, leftMargin=side, rightMargin=side,
+                                topMargin=2.1 * cm, bottomMargin=2 * cm)
+
+        def on_pg(c, d_):
+            _pdf_draw_export_colontitul(c, d_, code, _FONT)
+
         styles = getSampleStyleSheet()
         for s in styles.byName.values():
             s.fontName = _FONT
         elements = []
 
-        title_style = ParagraphStyle('CustomTitle', parent=styles['Title'], fontName=_FONT, fontSize=16, spaceAfter=6)
-        elements.append(Paragraph(d['title'], title_style))
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Title'], fontName=_FONT, fontSize=17 if not use_land else 15, textColor=colors.HexColor('#0F172A'), spaceAfter=6)
+        elements.append(Paragraph(_xml_escape(d['title']), title_style))
         elements.append(Paragraph(f"Ответов: {d['responses']}", styles['Normal']))
         if winner_line:
-            winner_style = ParagraphStyle('WinnerLine', fontName=_FONT_BOLD, fontSize=13, textColor=colors.HexColor('#2563EB'), spaceBefore=8, spaceAfter=4)
-            elements.append(Paragraph(winner_line, winner_style))
-        elements.append(Spacer(1, 12))
+            winner_style = ParagraphStyle('WinnerLine', fontName=_FONT_BOLD, fontSize=12.5, textColor=colors.HexColor('#2563EB'), spaceBefore=6, spaceAfter=4)
+            elements.append(Paragraph(_xml_escape(winner_line), winner_style))
+        elements.append(Spacer(1, 10))
 
-        elements.append(Paragraph("Рейтинг", styles['Heading2']))
+        elements.append(Paragraph("<b>Рейтинг</b>", ParagraphStyle('H2e', parent=styles['Heading2'], fontName=_FONT_BOLD, fontSize=12, spaceAfter=6)))
         for i, r in enumerate(d['ranking']):
-            elements.append(Paragraph(f"{i+1}. <b>{r['name']}</b> — {r['score']:.2f} из 5", styles['Normal']))
+            elements.append(Paragraph(f"{i+1}. <b>{_xml_escape(r['name'])}</b> — {r['score']:.2f} из {sm}", styles['Normal']))
         elements.append(Spacer(1, 12))
 
-        elements.append(Paragraph("Детализация по критериям", styles['Heading2']))
+        elements.append(Paragraph("<b>Детализация по критериям</b>", ParagraphStyle('H2d', parent=styles['Heading2'], fontName=_FONT_BOLD, fontSize=12, spaceAfter=8)))
         header = ["Вариант"] + [c['name'] for c in d['crits']]
         table_data = [header]
         for r in d['ranking']:
@@ -1926,27 +2196,18 @@ def export_decision(slug, fmt):
             for c in d['crits']:
                 row.append(f"{d['details'].get((r['id'], c['id']), 0):.1f}")
             table_data.append(row)
-        t = Table(table_data, repeatRows=1)
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#DBEAFE')),
-            ('FONTNAME', (0,0), (-1,0), _FONT_BOLD),
-            ('FONTNAME', (0,1), (-1,-1), _FONT),
-            ('FONTSIZE', (0,0), (-1,-1), 9),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-            ('ALIGN', (1,1), (-1,-1), 'CENTER'),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#F8FAFC')]),
-        ]))
-        elements.append(t)
+        fs = 6 if n_crit >= 9 else (6.8 if n_crit >= 6 else 7.8)
+        cw = _pdf_col_widths(len(header), page[0], doc.leftMargin, doc.rightMargin, first_frac=0.26)
+        elements.append(_pdf_wrapped_result_table(table_data, cw, _FONT, _FONT_BOLD, font_size=fs))
         if d.get('respondents'):
             elements.append(Spacer(1, 12))
-            elements.append(Paragraph("Участники", styles['Heading2']))
-            elements.append(Paragraph(", ".join(d['respondents']), styles['Normal']))
+            elements.append(Paragraph("<b>Участники</b>", ParagraphStyle('H2u', parent=styles['Heading2'], fontName=_FONT_BOLD, fontSize=12, spaceAfter=4)))
+            elements.append(Paragraph(_xml_escape(", ".join(d['respondents'])), styles['Normal']))
         if review_text:
-            elements.append(Spacer(1, 18))
-            elements.append(Paragraph("Рецензия", styles['Heading2']))
-            elements.append(Paragraph(review_text, styles['Normal']))
-        doc.build(elements)
+            elements.append(Spacer(1, 16))
+            elements.append(Paragraph("<b>Рецензия</b>", ParagraphStyle('H2r', parent=styles['Heading2'], fontName=_FONT_BOLD, fontSize=12, spaceAfter=6)))
+            elements.append(Paragraph(_xml_escape(review_text), ParagraphStyle('Rev', parent=styles['Normal'], fontName=_FONT, fontSize=9.5, leading=13)))
+        doc.build(elements, onFirstPage=on_pg, onLaterPages=on_pg)
         buf.seek(0)
         from flask import send_file
         return send_file(buf, mimetype='application/pdf', as_attachment=True, download_name=f'results-{slug}.pdf')
@@ -1961,6 +2222,10 @@ def export_poll(slug, fmt):
         return jsonify({"error": "Не найдено"}), 404
     if not d.get('is_author'):
         return jsonify({"error": "Экспорт доступен только автору голосования"}), 403
+    if request.args.get('mode') == 'questionnaire':
+        if fmt not in ('pdf', 'docx'):
+            return jsonify({"error": "Для бланка доступны только PDF и Word"}), 400
+        return _export_poll_questionnaire(d, slug, fmt)
     total = sum(r['votes'] for r in d['results']) or 1
 
     poll_winner = _poll_winner_text(d['results'])
@@ -2021,8 +2286,9 @@ def export_poll(slug, fmt):
         from docx import Document
         from docx.shared import Pt, RGBColor
         doc = Document()
-        doc.styles['Normal'].font.name = 'Arial'
+        doc.styles['Normal'].font.name = 'Calibri'
         doc.styles['Normal'].font.size = Pt(11)
+        _docx_apply_export_colontitul(doc, d['slug'], 'голосования')
         doc.add_heading(d['title'], level=1)
         doc.add_paragraph(f"Проголосовало: {d['totalVoters']}")
         if poll_winner:
@@ -2030,10 +2296,10 @@ def export_poll(slug, fmt):
             wr = wp.add_run(poll_winner)
             wr.bold = True
             wr.font.size = Pt(13)
-            wr.font.color.rgb = RGBColor(0x25, 0x63, 0xEB)
+            wr.font.color.rgb = RGBColor(0x37, 0x99, 0xF6)
         has_voters = any(r.get('voters') for r in d['results'])
         ncols = 4 if has_voters else 3
-        table = doc.add_table(rows=1, cols=ncols, style='Light Grid Accent 1')
+        table = doc.add_table(rows=1, cols=ncols, style='Medium Shading 1 Accent 1')
         hdr = table.rows[0].cells
         hdr[0].text = "Вариант"; hdr[1].text = "Голосов"; hdr[2].text = "%"
         if has_voters:
@@ -2043,33 +2309,47 @@ def export_poll(slug, fmt):
             row[0].text = r['text']; row[1].text = str(r['votes']); row[2].text = f"{round(r['votes']/total*100)}%"
             if has_voters:
                 row[3].text = ", ".join(r.get('voters', []))
+        tf = Pt(8 if has_voters else 10)
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.size = tf
         buf = io.BytesIO(); doc.save(buf); buf.seek(0)
         from flask import send_file
         return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                          as_attachment=True, download_name=f'poll-{slug}.docx')
 
     elif fmt == 'pdf':
-        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib import colors
         from reportlab.lib.units import cm
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
         _FONT, _FONT_BOLD = _register_pdf_font()
-
+        code = d['slug']
+        has_voters = any(r.get('voters') for r in d['results'])
+        use_land = has_voters or len(d['results']) >= 6
+        page = landscape(A4) if use_land else A4
+        side = 1.65 * cm if use_land else 1.7 * cm
         buf = io.BytesIO()
-        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.5*cm, bottomMargin=1.5*cm)
+        doc = SimpleDocTemplate(buf, pagesize=page, leftMargin=side, rightMargin=side,
+                                topMargin=2.1 * cm, bottomMargin=2 * cm)
+
+        def on_pg(c, d_):
+            _pdf_draw_export_colontitul(c, d_, code, _FONT)
+
         styles = getSampleStyleSheet()
         for s in styles.byName.values():
             s.fontName = _FONT
         elements = []
-        elements.append(Paragraph(d['title'], ParagraphStyle('T', parent=styles['Title'], fontName=_FONT, fontSize=16, spaceAfter=6)))
+        elements.append(Paragraph(_xml_escape(d['title']), ParagraphStyle('T', parent=styles['Title'], fontName=_FONT, fontSize=16, textColor=colors.HexColor('#0F172A'), spaceAfter=6)))
         elements.append(Paragraph(f"Проголосовало: {d['totalVoters']}", styles['Normal']))
         if poll_winner:
-            pw_style = ParagraphStyle('PollWinner', fontName=_FONT_BOLD, fontSize=13, textColor=colors.HexColor('#2563EB'), spaceBefore=8, spaceAfter=4)
-            elements.append(Paragraph(poll_winner, pw_style))
-        elements.append(Spacer(1, 12))
-        has_voters = any(r.get('voters') for r in d['results'])
+            pw_style = ParagraphStyle('PollWinner', fontName=_FONT_BOLD, fontSize=12.5, textColor=colors.HexColor('#2563EB'), spaceBefore=6, spaceAfter=4)
+            elements.append(Paragraph(_xml_escape(poll_winner), pw_style))
+        elements.append(Spacer(1, 10))
         header = ["Вариант", "Голосов", "%"]
         if has_voters:
             header.append("Голосовавшие")
@@ -2079,16 +2359,11 @@ def export_poll(slug, fmt):
             if has_voters:
                 row.append(", ".join(r.get('voters', [])))
             table_data.append(row)
-        t = Table(table_data, repeatRows=1)
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#DBEAFE')),
-            ('FONTNAME', (0,0), (-1,0), _FONT_BOLD),
-            ('FONTNAME', (0,1), (-1,-1), _FONT),
-            ('FONTSIZE', (0,0), (-1,-1), 10),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-            ('ALIGN', (1,0), (-1,-1), 'CENTER'),
-        ]))
-        elements.append(t); doc.build(elements); buf.seek(0)
+        frac = 0.42 if (has_voters and not use_land) else (0.36 if has_voters else 0.55)
+        fs = 7 if has_voters else 8.5
+        cw = _pdf_col_widths(len(header), page[0], doc.leftMargin, doc.rightMargin, first_frac=frac)
+        elements.append(_pdf_wrapped_result_table(table_data, cw, _FONT, _FONT_BOLD, font_size=fs))
+        doc.build(elements, onFirstPage=on_pg, onLaterPages=on_pg); buf.seek(0)
         from flask import send_file
         return send_file(buf, mimetype='application/pdf', as_attachment=True, download_name=f'poll-{slug}.pdf')
 
@@ -2118,7 +2393,8 @@ def ai_review(slug):
     best_score = winner['score']
     winners = [r for r in ranking if abs(r['score'] - best_score) < 0.01]
     is_tie = len(winners) > 1
-    winner_line = _decision_winner_text(ranking)
+    scale_max = d.get('scale_max', 5)
+    winner_line = _decision_winner_text(ranking, scale_max)
 
     context = _build_review_context(d)
     sys_prompt = _build_review_prompt(d, winner_line, is_tie, winners, best_score)

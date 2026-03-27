@@ -71,7 +71,14 @@
         if (res.status !== 200) { document.getElementById('resCard').innerHTML = '<p>Не найдено</p>'; return; }
         var d = res.data;
         if (d.totalResponses === 0) {
-          document.getElementById('resCard').innerHTML = '<h1 class="res-title">' + esc(d.title) + '</h1><p style="color:var(--text-muted);margin-top:1rem;">Пока никто не ответил.</p><div class="res-footer"><a href="respond.html?id=' + slug + '">К оценке</a><a href="feed.html">В ленту</a><a href="dashboard.html">На главную</a></div>';
+          var emptyExports = '';
+          if (d.isAuthor) {
+            emptyExports = '<div class="export-bar" style="margin-top:1.5rem;"><span style="font-size:0.8125rem;font-weight:600;color:var(--text-muted);margin-right:0.5rem;">Бланк для печати:</span>' +
+              '<a href="/api/decisions/' + slug + '/export/pdf?mode=questionnaire" class="btn btn-outline">PDF</a>' +
+              '<a href="/api/decisions/' + slug + '/export/docx?mode=questionnaire" class="btn btn-outline">Word</a></div>';
+          }
+          document.getElementById('resCard').innerHTML = '<h1 class="res-title">' + esc(d.title) + '</h1><p style="color:var(--text-muted);margin-top:1rem;">Пока никто не ответил.</p>' + emptyExports +
+            '<div class="res-footer"><a href="respond.html?id=' + slug + '">К оценке</a><a href="feed.html">В ленту</a><a href="dashboard.html">На главную</a></div>';
           return;
         }
         var best = d.ranking[0];
@@ -143,6 +150,11 @@
             '<a href="/api/decisions/' + slug + '/export/docx?mode=detailed" class="btn btn-primary" style="font-size:0.8125rem;padding:0.5rem 1rem;"><span class="export-icon">&#128209;</span>Word</a>' +
             '<a href="/api/decisions/' + slug + '/export/xlsx?mode=detailed" class="btn btn-primary" style="font-size:0.8125rem;padding:0.5rem 1rem;"><span class="export-icon">&#128202;</span>Excel</a>' +
             '<a href="/api/decisions/' + slug + '/export/txt?mode=detailed" class="btn btn-primary" style="font-size:0.8125rem;padding:0.5rem 1rem;"><span class="export-icon">&#128221;</span>Текст</a>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">' +
+            '<span style="font-size:0.8125rem;font-weight:600;color:var(--text-muted);">Бланк (тема, варианты, критерии для печати):</span>' +
+            '<a href="/api/decisions/' + slug + '/export/pdf?mode=questionnaire" class="btn btn-outline"><span class="export-icon">&#128196;</span>PDF</a>' +
+            '<a href="/api/decisions/' + slug + '/export/docx?mode=questionnaire" class="btn btn-outline"><span class="export-icon">&#128209;</span>Word</a>' +
             '</div></div>';
         }
 
