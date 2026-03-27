@@ -97,14 +97,28 @@
             '<a href="/api/polls/' + slug + '/export/txt" class="btn btn-outline"><span class="export-icon">&#128221;</span>Текст</a>' +
             '</div>' +
             '<div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">' +
-            '<span style="font-size:0.8125rem;font-weight:600;color:var(--text-muted);">Бланк (тема и варианты для печати):</span>' +
-            '<a href="/api/polls/' + slug + '/export/pdf?mode=questionnaire" class="btn btn-outline"><span class="export-icon">&#128196;</span>PDF</a>' +
-            '<a href="/api/polls/' + slug + '/export/docx?mode=questionnaire" class="btn btn-outline"><span class="export-icon">&#128209;</span>Word</a>' +
+            '<span style="font-size:0.8125rem;font-weight:600;color:var(--text-muted);">Для печати (тема, описание, варианты):</span>' +
+            '<a id="pollQuestionnairePdf" href="/api/polls/' + slug + '/export/pdf?mode=questionnaire" class="btn btn-outline"><span class="export-icon">&#128196;</span>PDF</a>' +
+            '<a id="pollQuestionnaireDocx" href="/api/polls/' + slug + '/export/docx?mode=questionnaire" class="btn btn-outline"><span class="export-icon">&#128209;</span>Word</a>' +
+            '<label style="display:inline-flex;align-items:center;gap:0.375rem;margin-left:0.125rem;font-size:0.8125rem;color:var(--text-muted);cursor:pointer;user-select:none;">' +
+            '<input type="checkbox" id="pollQuestionnaireBlank" style="accent-color:var(--primary);"> Сохранить как бланк</label>' +
             '</div></div>';
         }
 
         html += '<div class="results-footer"><a href="vote.html?id=' + slug + '">&larr; К голосованию</a><a href="feed.html">В ленту</a><a href="dashboard.html">На главную</a></div>';
         document.getElementById('resultsCard').innerHTML = html;
+
+        if (d.isAuthor) {
+          var _pe = document.getElementById('pollQuestionnaireBlank');
+          var _pp = document.getElementById('pollQuestionnairePdf');
+          var _pw = document.getElementById('pollQuestionnaireDocx');
+          function _syncPollQuestionnaire() {
+            var q = (_pe && _pe.checked) ? '?mode=questionnaire&blank=1' : '?mode=questionnaire';
+            if (_pp) _pp.href = '/api/polls/' + slug + '/export/pdf' + q;
+            if (_pw) _pw.href = '/api/polls/' + slug + '/export/docx' + q;
+          }
+          if (_pe) { _pe.addEventListener('change', _syncPollQuestionnaire); _syncPollQuestionnaire(); }
+        }
 
         setTimeout(function() {
           var bars = document.querySelectorAll('.result-bar');

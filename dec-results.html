@@ -66,6 +66,21 @@
     if (!slug) { document.getElementById('resCard').innerHTML = '<p style="text-align:center;">Не указано</p><div class="res-footer"><a href="feed.html">В ленту</a><a href="dashboard.html">На главную</a></div>'; }
     else { loadResults(); }
 
+    function wireDecQuestionnaireLinks(s) {
+      var blankEl = document.getElementById('decQuestionnaireBlank');
+      var pdfEl = document.getElementById('decQuestionnairePdf');
+      var docxEl = document.getElementById('decQuestionnaireDocx');
+      function sync() {
+        var q = (blankEl && blankEl.checked) ? '?mode=questionnaire&blank=1' : '?mode=questionnaire';
+        if (pdfEl) pdfEl.href = '/api/decisions/' + s + '/export/pdf' + q;
+        if (docxEl) docxEl.href = '/api/decisions/' + s + '/export/docx' + q;
+      }
+      if (blankEl && pdfEl && docxEl) {
+        blankEl.addEventListener('change', sync);
+        sync();
+      }
+    }
+
     function loadResults() {
       apiGet('/api/decisions/' + slug + '/results').then(function(res) {
         if (res.status !== 200) { document.getElementById('resCard').innerHTML = '<p>Не найдено</p>'; return; }
@@ -73,12 +88,16 @@
         if (d.totalResponses === 0) {
           var emptyExports = '';
           if (d.isAuthor) {
-            emptyExports = '<div class="export-bar" style="margin-top:1.5rem;"><span style="font-size:0.8125rem;font-weight:600;color:var(--text-muted);margin-right:0.5rem;">Бланк для печати:</span>' +
-              '<a href="/api/decisions/' + slug + '/export/pdf?mode=questionnaire" class="btn btn-outline">PDF</a>' +
-              '<a href="/api/decisions/' + slug + '/export/docx?mode=questionnaire" class="btn btn-outline">Word</a></div>';
+            emptyExports = '<div class="export-bar" style="margin-top:1.5rem;display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">' +
+              '<span style="font-size:0.8125rem;font-weight:600;color:var(--text-muted);">Для печати (тема, описание, варианты):</span>' +
+              '<a id="decQuestionnairePdf" href="/api/decisions/' + slug + '/export/pdf?mode=questionnaire" class="btn btn-outline">PDF</a>' +
+              '<a id="decQuestionnaireDocx" href="/api/decisions/' + slug + '/export/docx?mode=questionnaire" class="btn btn-outline">Word</a>' +
+              '<label style="display:inline-flex;align-items:center;gap:0.375rem;font-size:0.8125rem;color:var(--text-muted);cursor:pointer;user-select:none;">' +
+              '<input type="checkbox" id="decQuestionnaireBlank" style="accent-color:var(--primary);"> Сохранить как бланк</label></div>';
           }
           document.getElementById('resCard').innerHTML = '<h1 class="res-title">' + esc(d.title) + '</h1><p style="color:var(--text-muted);margin-top:1rem;">Пока никто не ответил.</p>' + emptyExports +
             '<div class="res-footer"><a href="respond.html?id=' + slug + '">К оценке</a><a href="feed.html">В ленту</a><a href="dashboard.html">На главную</a></div>';
+          if (d.isAuthor) wireDecQuestionnaireLinks(slug);
           return;
         }
         var best = d.ranking[0];
@@ -152,14 +171,17 @@
             '<a href="/api/decisions/' + slug + '/export/txt?mode=detailed" class="btn btn-primary" style="font-size:0.8125rem;padding:0.5rem 1rem;"><span class="export-icon">&#128221;</span>Текст</a>' +
             '</div>' +
             '<div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">' +
-            '<span style="font-size:0.8125rem;font-weight:600;color:var(--text-muted);">Бланк (тема, варианты, критерии для печати):</span>' +
-            '<a href="/api/decisions/' + slug + '/export/pdf?mode=questionnaire" class="btn btn-outline"><span class="export-icon">&#128196;</span>PDF</a>' +
-            '<a href="/api/decisions/' + slug + '/export/docx?mode=questionnaire" class="btn btn-outline"><span class="export-icon">&#128209;</span>Word</a>' +
+            '<span style="font-size:0.8125rem;font-weight:600;color:var(--text-muted);">Для печати (тема, описание, варианты):</span>' +
+            '<a id="decQuestionnairePdf" href="/api/decisions/' + slug + '/export/pdf?mode=questionnaire" class="btn btn-outline"><span class="export-icon">&#128196;</span>PDF</a>' +
+            '<a id="decQuestionnaireDocx" href="/api/decisions/' + slug + '/export/docx?mode=questionnaire" class="btn btn-outline"><span class="export-icon">&#128209;</span>Word</a>' +
+            '<label style="display:inline-flex;align-items:center;gap:0.375rem;font-size:0.8125rem;color:var(--text-muted);cursor:pointer;user-select:none;">' +
+            '<input type="checkbox" id="decQuestionnaireBlank" style="accent-color:var(--primary);"> Сохранить как бланк</label>' +
             '</div></div>';
         }
 
         html += '<div class="res-footer"><a href="respond.html?id=' + slug + '">К оценке</a><a href="feed.html">В ленту</a><a href="dashboard.html">На главную</a></div>';
         document.getElementById('resCard').innerHTML = html;
+        if (d.isAuthor) wireDecQuestionnaireLinks(slug);
 
         // Animate ranking bars (best first)
         setTimeout(function() {

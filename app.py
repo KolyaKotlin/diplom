@@ -1851,8 +1851,8 @@ def _build_review_text(d):
     return review
 
 
-def _export_poll_questionnaire(d, slug, fmt):
-    """Тема, описание и варианты для печати (без результатов)."""
+def _export_poll_questionnaire(d, slug, fmt, as_blank=False):
+    """Тема, описание и варианты. При as_blank=True — бланк (☐, ФИО и т.д.)."""
     code = d['slug']
     opts = d.get('optionTexts') or []
     mc = d.get('multipleChoice')
@@ -1865,23 +1865,34 @@ def _export_poll_questionnaire(d, slug, fmt):
         doc.styles['Normal'].font.size = Pt(11)
         _docx_apply_export_colontitul(doc, code, 'голосования')
         doc.add_heading(d['title'], level=1)
-        p0 = doc.add_paragraph()
-        r0 = p0.add_run('Бланк для бумажного голосования · ')
-        r0.bold = True
-        r1 = p0.add_run('можно выбрать несколько ответов.' if mc else 'отметьте один вариант.')
-        r1.font.color.rgb = RGBColor(0x71, 0x85, 0x9A)
         if d.get('description'):
             doc.add_paragraph(d['description'])
+        if as_blank:
+            p0 = doc.add_paragraph()
+            r0 = p0.add_run('Бланк для бумажного голосования · ')
+            r0.bold = True
+            r1 = p0.add_run('можно выбрать несколько ответов.' if mc else 'отметьте один вариант.')
+            r1.font.color.rgb = RGBColor(0x71, 0x85, 0x9A)
+        if not as_blank:
+            hint = doc.add_paragraph()
+            hr = hint.add_run('Допускается несколько вариантов ответа.' if mc else 'Один вариант ответа.')
+            hr.italic = True
+            hr.font.color.rgb = RGBColor(0x71, 0x85, 0x9A)
         doc.add_heading('Варианты ответов', level=2)
-        for i, t in enumerate(opts, 1):
-            doc.add_paragraph(f'☐  {i}.  {t}')
-        doc.add_paragraph('')
-        fp = doc.add_paragraph('ФИО: _______________________________    Дата: ______________    Подпись: ______________')
-        fp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        if as_blank:
+            for i, t in enumerate(opts, 1):
+                doc.add_paragraph(f'☐  {i}.  {t}')
+            doc.add_paragraph('')
+            fp = doc.add_paragraph('ФИО: _______________________________    Дата: ______________    Подпись: ______________')
+            fp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        else:
+            for i, t in enumerate(opts, 1):
+                doc.add_paragraph(f'{i}. {t}')
         buf = io.BytesIO(); doc.save(buf); buf.seek(0)
         from flask import send_file
+        fn_dl = f'poll-blank-{slug}.docx' if as_blank else f'poll-print-{slug}.docx'
         return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                         as_attachment=True, download_name=f'poll-blank-{slug}.docx')
+                         as_attachment=True, download_name=fn_dl)
     elif fmt == 'pdf':
         from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors
@@ -1899,24 +1910,33 @@ def _export_poll_questionnaire(d, slug, fmt):
             s.fontName = fn
         el = []
         el.append(Paragraph(_xml_escape(d['title']), ParagraphStyle('PT', parent=st['Title'], fontName=fn, fontSize=17, textColor=colors.HexColor('#0F172A'), spaceAfter=8)))
-        hint = 'Бланк для бумажного голосования. Можно выбрать несколько ответов.' if mc else 'Бланк для бумажного голосования. Отметьте один вариант.'
-        el.append(Paragraph(f'<i>{_xml_escape(hint)}</i>', ParagraphStyle('PH', parent=st['Normal'], fontName=fn, fontSize=10, textColor=colors.HexColor('#64748B'), spaceAfter=10)))
         if d.get('description'):
             el.append(Paragraph(_xml_escape(d['description']), ParagraphStyle('PD', parent=st['Normal'], fontName=fn, fontSize=10.5, leading=14, spaceAfter=14)))
+        if as_blank:
+            hint = 'Бланк для бумажного голосования. Можно выбрать несколько ответов.' if mc else 'Бланк для бумажного голосования. Отметьте один вариант.'
+            el.append(Paragraph(f'<i>{_xml_escape(hint)}</i>', ParagraphStyle('PH', parent=st['Normal'], fontName=fn, fontSize=10, textColor=colors.HexColor('#64748B'), spaceAfter=10)))
+        else:
+            sm_text = 'Допускается несколько вариантов ответа.' if mc else 'Один вариант ответа.'
+            el.append(Paragraph(f'<i>{_xml_escape(sm_text)}</i>', ParagraphStyle('PHs', parent=st['Normal'], fontName=fn, fontSize=10, textColor=colors.HexColor('#64748B'), spaceAfter=10)))
         el.append(Paragraph('<b>Варианты ответов</b>', ParagraphStyle('H2', parent=st['Heading2'], fontName=fb, fontSize=12, spaceAfter=6)))
         for i, t in enumerate(opts, 1):
-            el.append(Paragraph(f'☐  <b>{i}.</b>  {_xml_escape(t)}', ParagraphStyle('Opt', parent=st['Normal'], fontName=fn, fontSize=10.5, leading=14, leftIndent=0, spaceAfter=5)))
-        el.append(Spacer(1, 16))
-        el.append(Paragraph(_xml_escape('ФИО: _______________________________    Дата: ______________    Подпись: ______________'), st['Normal']))
+            if as_blank:
+                el.append(Paragraph(f'☐  <b>{i}.</b>  {_xml_escape(t)}', ParagraphStyle('Opt', parent=st['Normal'], fontName=fn, fontSize=10.5, leading=14, spaceAfter=5)))
+            else:
+                el.append(Paragraph(f'<b>{i}.</b>  {_xml_escape(t)}', ParagraphStyle('OptS', parent=st['Normal'], fontName=fn, fontSize=10.5, leading=14, spaceAfter=5)))
+        if as_blank:
+            el.append(Spacer(1, 16))
+            el.append(Paragraph(_xml_escape('ФИО: _______________________________    Дата: ______________    Подпись: ______________'), st['Normal']))
         docp.build(el, onFirstPage=on_pg, onLaterPages=on_pg)
         buf.seek(0)
         from flask import send_file
-        return send_file(buf, mimetype='application/pdf', as_attachment=True, download_name=f'poll-blank-{slug}.pdf')
+        fn_pdf = f'poll-blank-{slug}.pdf' if as_blank else f'poll-print-{slug}.pdf'
+        return send_file(buf, mimetype='application/pdf', as_attachment=True, download_name=fn_pdf)
     return jsonify({"error": "Формат не поддержан"}), 400
 
 
-def _export_decision_questionnaire(d, slug, fmt):
-    """Тема, альтернативы, критерии и матрица для ручного заполнения."""
+def _export_decision_questionnaire(d, slug, fmt, as_blank=False):
+    """Тема, описание и варианты. При as_blank=True — критерии, матрица, поля участника."""
     code = d['slug']
     sm = int(d.get('scale_max', 5))
     alts = d['alts']
@@ -1929,36 +1949,39 @@ def _export_decision_questionnaire(d, slug, fmt):
         doc.styles['Normal'].font.size = Pt(11)
         _docx_apply_export_colontitul(doc, code, 'оценки')
         doc.add_heading(d['title'], level=1)
-        meta = doc.add_paragraph()
-        mr = meta.add_run(f'Бланк для печати · оцените каждую альтернативу по критериям (шкала 1–{sm}).')
-        mr.italic = True
-        mr.font.color.rgb = RGBColor(0x71, 0x85, 0x9A)
         if d.get('description'):
             doc.add_paragraph(d['description'])
-        doc.add_heading('Альтернативы', level=2)
+        if as_blank:
+            meta = doc.add_paragraph()
+            mr = meta.add_run(f'Бланк для печати · оцените каждую альтернативу по критериям (шкала 1–{sm}).')
+            mr.italic = True
+            mr.font.color.rgb = RGBColor(0x71, 0x85, 0x9A)
+        doc.add_heading('Предложенные варианты', level=2)
         for i, a in enumerate(alts, 1):
             doc.add_paragraph(f'{i}. {a["name"]}')
-        doc.add_heading('Критерии оценки', level=2)
-        for i, c in enumerate(crits, 1):
-            doc.add_paragraph(f'{i}. {c["name"]}')
-        doc.add_heading('Матрица оценок', level=2)
-        cols = len(crits) + 1
-        table = doc.add_table(rows=1, cols=cols, style='Light Grid Accent 1')
-        hdr = table.rows[0].cells
-        hdr[0].text = 'Альтернатива'
-        for j, c in enumerate(crits):
-            hdr[j + 1].text = c['name']
-        for a in alts:
-            row = table.add_row().cells
-            row[0].text = a['name']
-            for j in range(len(crits)):
-                row[j + 1].text = '—'
-        doc.add_paragraph('')
-        doc.add_paragraph(f'Участник: ________________________________   Дата: ______________   (оценки от 1 до {sm})')
+        if as_blank:
+            doc.add_heading('Критерии оценки', level=2)
+            for i, c in enumerate(crits, 1):
+                doc.add_paragraph(f'{i}. {c["name"]}')
+            doc.add_heading('Матрица оценок', level=2)
+            cols = len(crits) + 1
+            table = doc.add_table(rows=1, cols=cols, style='Light Grid Accent 1')
+            hdr = table.rows[0].cells
+            hdr[0].text = 'Альтернатива'
+            for j, c in enumerate(crits):
+                hdr[j + 1].text = c['name']
+            for a in alts:
+                row = table.add_row().cells
+                row[0].text = a['name']
+                for j in range(len(crits)):
+                    row[j + 1].text = '—'
+            doc.add_paragraph('')
+            doc.add_paragraph(f'Участник: ________________________________   Дата: ______________   (оценки от 1 до {sm})')
         buf = io.BytesIO(); doc.save(buf); buf.seek(0)
         from flask import send_file
+        fn_dl = f'decision-blank-{slug}.docx' if as_blank else f'decision-print-{slug}.docx'
         return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                         as_attachment=True, download_name=f'decision-blank-{slug}.docx')
+                         as_attachment=True, download_name=fn_dl)
     elif fmt == 'pdf':
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib import colors
@@ -1966,6 +1989,26 @@ def _export_decision_questionnaire(d, slug, fmt):
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         fn, fb = _register_pdf_font()
+        if not as_blank:
+            buf = io.BytesIO()
+            docp = SimpleDocTemplate(buf, pagesize=A4, leftMargin=1.7 * cm, rightMargin=1.7 * cm,
+                                     topMargin=2.1 * cm, bottomMargin=2 * cm)
+            def on_pg_simple(c, d_):
+                _pdf_draw_export_colontitul(c, d_, code, fn)
+            st = getSampleStyleSheet()
+            for s in st.byName.values():
+                s.fontName = fn
+            el = []
+            el.append(Paragraph(_xml_escape(d['title']), ParagraphStyle('PTs', parent=st['Title'], fontName=fn, fontSize=17, textColor=colors.HexColor('#0F172A'), spaceAfter=8)))
+            if d.get('description'):
+                el.append(Paragraph(_xml_escape(d['description']), ParagraphStyle('PDs', parent=st['Normal'], fontName=fn, fontSize=10.5, leading=14, spaceAfter=14)))
+            el.append(Paragraph('<b>Предложенные варианты</b>', ParagraphStyle('H2s', parent=st['Heading2'], fontName=fb, fontSize=12, spaceAfter=6)))
+            for i, a in enumerate(alts, 1):
+                el.append(Paragraph(f'<b>{i}.</b> {_xml_escape(a["name"])}', ParagraphStyle('LIs', parent=st['Normal'], fontName=fn, fontSize=10.5, leading=14, spaceAfter=4)))
+            docp.build(el, onFirstPage=on_pg_simple, onLaterPages=on_pg_simple)
+            buf.seek(0)
+            from flask import send_file
+            return send_file(buf, mimetype='application/pdf', as_attachment=True, download_name=f'decision-print-{slug}.pdf')
         n_crit = len(crits)
         use_land = n_crit >= 4
         page = landscape(A4) if use_land else A4
@@ -1980,10 +2023,10 @@ def _export_decision_questionnaire(d, slug, fmt):
             s.fontName = fn
         el = []
         el.append(Paragraph(_xml_escape(d['title']), ParagraphStyle('PT', parent=st['Title'], fontName=fn, fontSize=16 if use_land else 17, textColor=colors.HexColor('#0F172A'), spaceAfter=6)))
-        el.append(Paragraph(_xml_escape(f'Бланк оценки альтернатив по критериям (шкала 1–{sm}).'),
-                            ParagraphStyle('PH', parent=st['Normal'], fontName=fn, fontSize=10, textColor=colors.HexColor('#64748B'), spaceAfter=10)))
         if d.get('description'):
             el.append(Paragraph(_xml_escape(d['description']), ParagraphStyle('PD', parent=st['Normal'], fontName=fn, fontSize=10, leading=13, spaceAfter=12)))
+        el.append(Paragraph(_xml_escape(f'Бланк оценки альтернатив по критериям (шкала 1–{sm}).'),
+                            ParagraphStyle('PH', parent=st['Normal'], fontName=fn, fontSize=10, textColor=colors.HexColor('#64748B'), spaceAfter=10)))
         el.append(Paragraph('<b>Альтернативы</b>', ParagraphStyle('H', parent=st['Heading2'], fontName=fb, fontSize=11, spaceAfter=4)))
         for i, a in enumerate(alts, 1):
             el.append(Paragraph(f'<b>{i}.</b> {_xml_escape(a["name"])}', ParagraphStyle('LI', parent=st['Normal'], fontName=fn, fontSize=10, leading=13, spaceAfter=3)))
@@ -2019,7 +2062,8 @@ def export_decision(slug, fmt):
     if request.args.get('mode') == 'questionnaire':
         if fmt not in ('pdf', 'docx'):
             return jsonify({"error": "Для бланка доступны только PDF и Word"}), 400
-        return _export_decision_questionnaire(d, slug, fmt)
+        as_blank = str(request.args.get('blank', '')).lower() in ('1', 'true', 'yes', 'on')
+        return _export_decision_questionnaire(d, slug, fmt, as_blank)
     detailed = request.args.get('mode') == 'detailed'
     review_text = _build_review_text(d) if detailed else ""
 
@@ -2225,7 +2269,8 @@ def export_poll(slug, fmt):
     if request.args.get('mode') == 'questionnaire':
         if fmt not in ('pdf', 'docx'):
             return jsonify({"error": "Для бланка доступны только PDF и Word"}), 400
-        return _export_poll_questionnaire(d, slug, fmt)
+        as_blank = str(request.args.get('blank', '')).lower() in ('1', 'true', 'yes', 'on')
+        return _export_poll_questionnaire(d, slug, fmt, as_blank)
     total = sum(r['votes'] for r in d['results']) or 1
 
     poll_winner = _poll_winner_text(d['results'])
