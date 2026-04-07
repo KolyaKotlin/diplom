@@ -32,9 +32,10 @@
     .page-top-bar .nav-links { display:flex; align-items:center; gap:1rem; }
     .page-top-bar .nav-links a { font-size:0.9375rem; color:var(--primary); text-decoration:none; font-weight:500; }
     .page-top-bar .nav-links a:hover { text-decoration:underline; }
-    .respond-done .back-links { margin-top:1.5rem; display:flex; flex-wrap:wrap; gap:0.75rem; justify-content:center; }
-    .respond-done .back-links a { font-size:0.9375rem; color:var(--primary); text-decoration:none; }
-    .respond-done .back-links a:hover { text-decoration:underline; }
+    .back-links { margin-top:1rem; display:flex; flex-wrap:wrap; gap:0.75rem 1rem; justify-content:center; align-items:center; }
+    .back-links a { font-size:0.9375rem; color:var(--primary); text-decoration:none; }
+    .back-links a:hover { text-decoration:underline; }
+    .respond-done .back-links { margin-top:1.5rem; }
   </style>
 </head>
 <body>
@@ -50,14 +51,14 @@
   <script src="js/main.js?v=4"></script>
   <script>
     var slug = new URLSearchParams(window.location.search).get('id');
-    if (!slug) { document.getElementById('respondCard').innerHTML = '<p style="text-align:center;color:var(--text-muted);">Не указано решение</p><div class="back-links" style="margin-top:1rem;justify-content:center;"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>'; }
+    if (!slug) { document.getElementById('respondCard').innerHTML = '<p style="text-align:center;color:var(--text-muted);">Не указано решение</p><div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>'; }
     else { loadDecision(); }
 
     var countdownInterval;
 
     function loadDecision() {
       apiGet('/api/decisions/' + slug).then(function(res) {
-        if (res.status !== 200) { document.getElementById('respondCard').innerHTML = '<p style="text-align:center;">Не найдено</p><div class="back-links" style="margin-top:1rem;justify-content:center;"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>'; return; }
+        if (res.status !== 200) { document.getElementById('respondCard').innerHTML = '<p style="text-align:center;">Не найдено</p><div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>'; return; }
         var d = res.data.decision;
         var author = d.author.lastName + ' ' + d.author.firstName;
         document.title = author + ' — ' + d.title;

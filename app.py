@@ -56,6 +56,10 @@ TELEGRAM_BOT_USERNAME = os.environ.get('TELEGRAM_BOT_USERNAME', '')
 ADMIN_EMAILS = [e.strip().lower() for e in os.environ.get('ADMIN_EMAILS', '').split(',') if e.strip()]
 OAUTH_BASE_URL = (os.environ.get('OAUTH_BASE_URL') or '').strip().rstrip('/')
 
+# Ограничение частоты регистрации с одного IP (анти-спам мультиаккаунтов). 0 = отключено.
+SIGNUP_MAX_PER_WINDOW = int(os.environ.get('SIGNUP_MAX_PER_WINDOW', '3'))
+SIGNUP_RATE_WINDOW_SEC = int(os.environ.get('SIGNUP_RATE_WINDOW_SECONDS', '3600'))
+
 
 def _oauth_origin():
     """Base URL for OAuth redirect_uri (tunnel or current request)."""
@@ -243,6 +247,12 @@ def _migrate():
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         UNIQUE(decision_id, user_id)
     )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS signup_rate (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip_key TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_signup_rate_ip_time ON signup_rate (ip_key, created_at)")
     conn.commit()
     conn.close()
 
@@ -274,6 +284,43 @@ def user_dict(row):
 
 def get_fingerprint():
     return hashlib.md5((request.remote_addr or '' + request.headers.get('User-Agent', '')).encode()).hexdigest()
+
+
+def _signup_client_ip():
+    """IP клиента с учётом прокси (ProxyFix подставляет remote_addr из X-Forwarded-For)."""
+    xff = (request.headers.get('X-Forwarded-For') or request.environ.get('HTTP_X_FORWARDED_FOR') or '').strip()
+    if xff:
+        return xff.split(',')[0].strip() or 'unknown'
+    return (request.remote_addr or '').strip() or 'unknown'
+
+
+def _signup_ip_key(ip):
+    """Не храним сырой IP в БД — только HMAC с секретом приложения."""
+    return hmac.new(
+        app.secret_key.encode('utf-8'),
+        (ip or 'unknown').encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _signup_skip_rate_limit(ip):
+    if SIGNUP_MAX_PER_WINDOW <= 0:
+        return True
+    return ip in ('127.0.0.1', '::1', 'localhost')
+
+
+def _signup_recent_registration_count(conn, ip_key):
+    """Число успешных регистраций с этого IP за последнее окно (SIGNUP_RATE_WINDOW_SEC)."""
+    w = max(60, SIGNUP_RATE_WINDOW_SEC)
+    conn.execute(
+        "DELETE FROM signup_rate WHERE created_at < datetime('now', ?)",
+        (f'-{w * 3} seconds',),
+    )
+    row = conn.execute(
+        "SELECT COUNT(*) as c FROM signup_rate WHERE ip_key = ? AND created_at > datetime('now', ?)",
+        (ip_key, f'-{w} seconds'),
+    ).fetchone()
+    return int(row['c']) if row else 0
 
 def check_deadline(deadline_str):
     if not deadline_str:
@@ -552,15 +599,27 @@ def register():
     oauth = session.pop('oauth_pending', None)
     oauth_provider = oauth['provider'] if oauth else ''
     oauth_id = oauth['oauth_id'] if oauth else ''
+    reg_ip = _signup_client_ip()
+    ip_key = _signup_ip_key(reg_ip)
     conn = get_db()
     try:
+        if not _signup_skip_rate_limit(reg_ip):
+            n = _signup_recent_registration_count(conn, ip_key)
+            if n >= SIGNUP_MAX_PER_WINDOW:
+                return jsonify({
+                    "error": "С этого адреса уже создано несколько аккаунтов за короткое время. "
+                             "Подождите примерно час или напишите администратору, если нужна помощь.",
+                }), 429
         conn.execute("INSERT INTO users (email,password_hash,first_name,last_name,birthdate,oauth_provider,oauth_id) VALUES (?,?,?,?,?,?,?)",
                      (email, hash_password(pw), fn, ln, bd or None, oauth_provider, oauth_id))
+        if not _signup_skip_rate_limit(reg_ip):
+            conn.execute("INSERT INTO signup_rate (ip_key) VALUES (?)", (ip_key,))
         conn.commit()
         user = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
         session['user_id'] = user['id']
         return jsonify({"ok": True, "user": user_dict(user)}), 201
     except sqlite3.IntegrityError:
+        conn.rollback()
         return jsonify({"error": "Пользователь с таким email уже существует"}), 409
     finally:
         conn.close()
