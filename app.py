@@ -2904,6 +2904,102 @@ def admin_delete_decision(slug):
     return jsonify({"ok": True})
 
 
+@app.route('/api/admin/stats')
+@admin_required
+def admin_stats():
+    """Общая статистика для админ-панели."""
+    conn = get_db()
+    try:
+        users_total = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()['c']
+        users_blocked = conn.execute("SELECT COUNT(*) AS c FROM users WHERE is_blocked=1").fetchone()['c']
+        users_warned = conn.execute("SELECT COUNT(*) AS c FROM users WHERE warnings>0 AND is_blocked=0").fetchone()['c']
+        polls_total = conn.execute("SELECT COUNT(*) AS c FROM polls").fetchone()['c']
+        decisions_total = conn.execute("SELECT COUNT(*) AS c FROM decisions").fetchone()['c']
+        votes_total = conn.execute("SELECT COUNT(*) AS c FROM poll_votes").fetchone()['c']
+        responses_total = conn.execute("SELECT COUNT(*) AS c FROM decision_responses").fetchone()['c']
+        moderation_total = conn.execute("SELECT COUNT(*) AS c FROM moderation_log").fetchone()['c']
+        users_today = conn.execute(
+            "SELECT COUNT(*) AS c FROM users WHERE date(created_at) = date('now')"
+        ).fetchone()['c']
+    finally:
+        conn.close()
+    return jsonify({
+        "usersTotal": users_total,
+        "usersActive": users_total - users_blocked,
+        "usersBlocked": users_blocked,
+        "usersWarned": users_warned,
+        "usersToday": users_today,
+        "pollsTotal": polls_total,
+        "decisionsTotal": decisions_total,
+        "votesTotal": votes_total,
+        "responsesTotal": responses_total,
+        "moderationTotal": moderation_total,
+    })
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_user(user_id):
+    """Удалить пользователя и весь его контент (опросы, решения, голоса)."""
+    if session.get('user_id') == user_id:
+        return jsonify({"error": "Нельзя удалить самого себя"}), 400
+    conn = get_db()
+    u = conn.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone()
+    if not u:
+        conn.close()
+        return jsonify({"error": "Пользователь не найден"}), 404
+    try:
+        conn.execute("DELETE FROM polls WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM decisions WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM poll_votes WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM decision_responses WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM moderation_log WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route('/api/admin/users/<int:user_id>/ban', methods=['POST'])
+@admin_required
+def admin_ban_user(user_id):
+    """Заблокировать пользователя вручную."""
+    if session.get('user_id') == user_id:
+        return jsonify({"error": "Нельзя заблокировать самого себя"}), 400
+    conn = get_db()
+    u = conn.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone()
+    if not u:
+        conn.close()
+        return jsonify({"error": "Пользователь не найден"}), 404
+    conn.execute("UPDATE users SET is_blocked=1 WHERE id=?", (user_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route('/api/admin/moderation-log/<int:log_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_log_entry(log_id):
+    """Удалить одну запись из лога модерации."""
+    conn = get_db()
+    conn.execute("DELETE FROM moderation_log WHERE id=?", (log_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route('/api/admin/moderation-log/clear', methods=['POST'])
+@admin_required
+def admin_clear_log():
+    """Очистить весь лог модерации."""
+    conn = get_db()
+    conn.execute("DELETE FROM moderation_log")
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
 @app.route('/api/admin/publish-all-to-feed', methods=['POST'])
 @admin_required
 def admin_publish_all_to_feed():
