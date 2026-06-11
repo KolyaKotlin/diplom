@@ -272,6 +272,18 @@
         <div class="tab-panel" id="panelTools">
           <div class="admin-section">
             <div class="section-head">
+              <h2>Резервная копия базы данных</h2>
+              <span class="hint">Скачайте бэкап перед опасными действиями или при риске потери сервера</span>
+            </div>
+            <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+              <a class="btn btn-primary" id="backupDbBtn" href="/api/admin/backup-db" download>Скачать database.db</a>
+              <a class="btn btn-outline" id="exportAllBtn" href="/api/admin/export-all" download>Скачать JSON со всеми данными</a>
+              <span style="font-size:0.875rem;color:var(--text-muted);">Доступно только администратору</span>
+            </div>
+          </div>
+
+          <div class="admin-section">
+            <div class="section-head">
               <h2>Лента</h2>
               <span class="hint">Включить отображение всех опросов и решений в публичной ленте</span>
             </div>

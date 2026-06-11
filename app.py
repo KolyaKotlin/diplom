@@ -3000,6 +3000,45 @@ def admin_clear_log():
     return jsonify({"ok": True})
 
 
+@app.route('/api/admin/backup-db')
+@admin_required
+def admin_backup_db():
+    """Скачать сырой файл базы данных (бинарный бэкап SQLite)."""
+    from flask import send_file
+    if not os.path.exists(DB_PATH):
+        return jsonify({"error": "База не найдена", "path": DB_PATH}), 404
+    ts = datetime.now().strftime('%Y%m%d-%H%M%S')
+    return send_file(DB_PATH, mimetype='application/octet-stream',
+                     as_attachment=True, download_name=f'database-{ts}.db')
+
+
+@app.route('/api/admin/export-all')
+@admin_required
+def admin_export_all():
+    """Полный экспорт всех данных БД в JSON (на случай если .db не подойдёт)."""
+    from flask import send_file
+    conn = get_db()
+    try:
+        tables = [r['name'] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        ).fetchall()]
+        dump = {}
+        for t in tables:
+            rows = conn.execute(f"SELECT * FROM {t}").fetchall()
+            dump[t] = [dict(r) for r in rows]
+    finally:
+        conn.close()
+    payload = {
+        "exportedAt": datetime.now().isoformat(),
+        "dbPath": DB_PATH,
+        "tables": dump,
+    }
+    buf = io.BytesIO(json.dumps(payload, ensure_ascii=False, indent=2, default=str).encode('utf-8'))
+    ts = datetime.now().strftime('%Y%m%d-%H%M%S')
+    return send_file(buf, mimetype='application/json',
+                     as_attachment=True, download_name=f'database-export-{ts}.json')
+
+
 @app.route('/api/admin/publish-all-to-feed', methods=['POST'])
 @admin_required
 def admin_publish_all_to_feed():
