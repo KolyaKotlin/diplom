@@ -120,6 +120,36 @@
     /* Row highlight when context-active */
     .admin-table tbody tr.ctx-active { background: rgba(59,130,246,0.08) !important; }
 
+    /* Personal Data masking */
+    .pd-cell { transition: filter 0.18s ease, color 0.18s; }
+    .mask-pd tr:not(.pd-revealed) .pd-cell {
+      filter: blur(6px);
+      user-select: none;
+      cursor: default;
+    }
+    .mask-pd tr:not(.pd-revealed) .pd-cell:hover { filter: blur(3px); }
+
+    .pd-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 1.6rem; height: 1.6rem; padding: 0;
+      border-radius: 0.4rem; border: 1px solid var(--border);
+      background: var(--bg); color: var(--text-muted); cursor: pointer;
+      font-size: 0.9rem; line-height: 1; font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+    }
+    .pd-toggle:hover { background: var(--bg-hover, rgba(0,0,0,0.05)); color: var(--text); }
+    tr.pd-revealed .pd-toggle { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+    .mask-btn {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.4rem 0.7rem; border: 1px solid var(--border);
+      border-radius: 0.5rem; background: var(--bg);
+      color: var(--text); cursor: pointer; font-size: 0.8125rem; font-family: inherit;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .mask-btn:hover { background: var(--bg-hover, rgba(0,0,0,0.05)); }
+    body.mask-pd .mask-btn { background: var(--primary); color: #fff; border-color: var(--primary); }
+
     @media (max-width: 640px) {
       .admin-page { padding: 1rem 0.75rem 2.5rem; }
       .tab { padding: 0.45rem 0.7rem; font-size: 0.8125rem; }
@@ -132,6 +162,10 @@
     <div class="admin-top">
       <h1><span class="admin-dot"></span> Админ-панель</h1>
       <div class="admin-top-actions">
+        <button class="mask-btn" id="maskAllBtn" title="Скрыть персональные данные (для демонстрации)">
+          <span id="maskAllIcon">&#128065;</span>
+          <span id="maskAllLabel">Скрыть ПД</span>
+        </button>
         <button class="theme-toggle" id="themeToggle" title="Сменить тему">&#9790;</button>
         <a href="dashboard.html" class="btn btn-outline">На дашборд</a>
         <a href="feed.html" class="btn btn-outline">Лента</a>
@@ -332,7 +366,38 @@
         bindTools();
         bindSearch();
         bindGlobalCtx();
+        bindPdMask();
       }).catch(function() { denied.style.display = 'block'; });
+
+      // ─── Personal Data masking ───────────────────────────
+      function applyPdMaskState() {
+        var on = localStorage.getItem('admin_mask_pd') === '1';
+        document.body.classList.toggle('mask-pd', on);
+        var lbl = document.getElementById('maskAllLabel');
+        if (lbl) lbl.textContent = on ? 'Показать ПД' : 'Скрыть ПД';
+        var btn = document.getElementById('maskAllBtn');
+        if (btn) btn.title = on
+          ? 'Показать персональные данные'
+          : 'Скрыть персональные данные (для демонстрации)';
+      }
+      function bindPdMask() {
+        applyPdMaskState();
+        var btn = document.getElementById('maskAllBtn');
+        if (btn) btn.addEventListener('click', function() {
+          var on = localStorage.getItem('admin_mask_pd') === '1';
+          localStorage.setItem('admin_mask_pd', on ? '0' : '1');
+          document.querySelectorAll('tr.pd-revealed').forEach(function(r){ r.classList.remove('pd-revealed'); });
+          applyPdMaskState();
+        });
+        document.addEventListener('click', function(e) {
+          var t = e.target.closest('[data-pd-toggle]');
+          if (!t) return;
+          e.preventDefault();
+          e.stopPropagation();
+          var row = t.closest('tr');
+          if (row) row.classList.toggle('pd-revealed');
+        });
+      }
 
       function loadAll() {
         loadStats();
@@ -398,12 +463,15 @@
           actions += '<button class="btn-mini danger" data-action="delete-user" data-id="' + u.id + '">Удалить</button>';
           return '<tr data-type="user" data-id="' + u.id + '">' +
                    '<td>' + u.id + '</td>' +
-                   '<td>' + esc(u.email) + '</td>' +
-                   '<td>' + esc((u.firstName || '') + ' ' + (u.lastName || '')) + '</td>' +
+                   '<td class="pd-cell">' + esc(u.email) + '</td>' +
+                   '<td class="pd-cell">' + esc((u.firstName || '') + ' ' + (u.lastName || '')) + '</td>' +
                    '<td>' + fmtDate(u.createdAt) + '</td>' +
                    '<td>' + warn + '</td>' +
                    '<td>' + status + '</td>' +
-                   '<td><div class="row-actions">' + actions + '</div></td>' +
+                   '<td><div class="row-actions">' +
+                     '<button class="pd-toggle" data-pd-toggle title="Показать/скрыть ПД этой строки">&#128065;</button>' +
+                     actions +
+                   '</div></td>' +
                  '</tr>';
         }).join('');
         bindRowActions(tbody);
@@ -434,10 +502,11 @@
           var author = esc(d.authorName && d.authorName.trim() ? d.authorName : (d.authorEmail || '—'));
           return '<tr data-type="decision" data-slug="' + esc(d.slug) + '">' +
                    '<td>' + esc(d.title) + '</td>' +
-                   '<td>' + author + '</td>' +
+                   '<td class="pd-cell">' + author + '</td>' +
                    '<td>' + fmtDate(d.createdAt) + '</td>' +
                    '<td>' + pub + '</td>' +
                    '<td><div class="row-actions">' +
+                     '<button class="pd-toggle" data-pd-toggle title="Показать/скрыть ПД этой строки">&#128065;</button>' +
                      '<a class="btn-mini" target="_blank" href="dec-results.html?id=' + encodeURIComponent(d.slug) + '">Открыть</a>' +
                      '<button class="btn-mini danger" data-action="delete-decision" data-slug="' + esc(d.slug) + '">Удалить</button>' +
                    '</div></td>' +
@@ -471,10 +540,11 @@
           var author = esc(p.authorName && p.authorName.trim() ? p.authorName : (p.authorEmail || '—'));
           return '<tr data-type="poll" data-slug="' + esc(p.slug) + '">' +
                    '<td>' + esc(p.title) + '</td>' +
-                   '<td>' + author + '</td>' +
+                   '<td class="pd-cell">' + author + '</td>' +
                    '<td>' + fmtDate(p.createdAt) + '</td>' +
                    '<td>' + pub + '</td>' +
                    '<td><div class="row-actions">' +
+                     '<button class="pd-toggle" data-pd-toggle title="Показать/скрыть ПД этой строки">&#128065;</button>' +
                      '<a class="btn-mini" target="_blank" href="results.html?id=' + encodeURIComponent(p.slug) + '">Открыть</a>' +
                      '<button class="btn-mini danger" data-action="delete-poll" data-slug="' + esc(p.slug) + '">Удалить</button>' +
                    '</div></td>' +
@@ -508,10 +578,11 @@
           var content = (m.pollTitle || m.reason || '—');
           return '<tr data-type="log" data-id="' + m.id + '">' +
                    '<td>' + esc(fmtDateTime(m.createdAt)) + '</td>' +
-                   '<td>' + esc(m.userEmail) + '</td>' +
+                   '<td class="pd-cell">' + esc(m.userEmail) + '</td>' +
                    '<td>' + esc(m.contentType) + '</td>' +
                    '<td class="log-reason" title="' + esc(m.reason || m.pollTitle || '') + '">' + esc(content) + '</td>' +
                    '<td><div class="row-actions">' +
+                     '<button class="pd-toggle" data-pd-toggle title="Показать/скрыть ПД этой строки">&#128065;</button>' +
                      '<button class="btn-mini danger" data-action="delete-log" data-id="' + m.id + '">Удалить</button>' +
                    '</div></td>' +
                  '</tr>';
