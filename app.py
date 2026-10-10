@@ -25,12 +25,25 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-# Railway: смонтируй Volume на /data, задай DATABASE_PATH=/data/database.db
-_vol = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH')
-DB_PATH = os.environ.get('DATABASE_PATH') or (
-    os.path.join(_vol, 'database.db') if _vol else
-    os.path.join(os.path.dirname(__file__), 'database.db')
-)
+# Railway: Volume на /data. Без volume каждый деплой стирает SQLite.
+_vol = (os.environ.get('RAILWAY_VOLUME_MOUNT_PATH') or '').strip()
+_db_env = (os.environ.get('DATABASE_PATH') or '').strip()
+if _db_env:
+    DB_PATH = _db_env
+elif _vol:
+    DB_PATH = os.path.join(_vol, 'database.db')
+elif os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('RAILWAY_PROJECT_ID'):
+    # На Railway по умолчанию пишем в /data — иначе база живёт в эфемерном контейнере
+    DB_PATH = '/data/database.db'
+else:
+    DB_PATH = os.path.join(os.path.dirname(__file__), 'database.db')
+try:
+    _db_dir = os.path.dirname(DB_PATH) or '.'
+    if _db_dir and _db_dir != '.' and not os.path.isdir(_db_dir):
+        os.makedirs(_db_dir, exist_ok=True)
+except Exception:
+    pass
+print('DB_PATH=', DB_PATH, flush=True)
 OPENAI_KEY = os.environ.get('OPENAI_API_KEY', '')
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY', '')
 GROQ_KEY = os.environ.get('GROQ_API_KEY', '')
@@ -2804,6 +2817,61 @@ def add_decision_comment(slug):
 # ═══════════════════════════════════════════════════════════════
 #  ADMIN
 # ═══════════════════════════════════════════════════════════════
+@app.route('/api/admin/restore-db', methods=['POST'])
+def admin_restore_db():
+    """Аварийная заливка SQLite на Volume (заголовок X-Restore-Key = RESTORE_KEY)."""
+    key = (os.environ.get('RESTORE_KEY') or '').strip()
+    if not key or (request.headers.get('X-Restore-Key') or '').strip() != key:
+        return jsonify({"error": "Forbidden"}), 403
+    f = request.files.get('file')
+    if not f:
+        return jsonify({"error": "Нужен file=database.db"}), 400
+    data = f.read()
+    if len(data) < 100 or not data.startswith(b'SQLite format 3'):
+        return jsonify({"error": "Это не файл SQLite"}), 400
+    try:
+        _dir = os.path.dirname(DB_PATH) or '.'
+        if _dir and _dir != '.' and not os.path.isdir(_dir):
+            os.makedirs(_dir, exist_ok=True)
+        tmp = DB_PATH + '.uploading'
+        with open(tmp, 'wb') as out:
+            out.write(data)
+        os.replace(tmp, DB_PATH)
+    except Exception as e:
+        return jsonify({"error": "Не удалось записать БД: %s" % e}), 500
+    try:
+        conn = get_db()
+        polls = conn.execute("SELECT COUNT(*) as c FROM polls").fetchone()['c']
+        decs = conn.execute("SELECT COUNT(*) as c FROM decisions").fetchone()['c']
+        users = conn.execute("SELECT COUNT(*) as c FROM users").fetchone()['c']
+        conn.close()
+    except Exception as e:
+        return jsonify({"error": "Файл записан, но не читается: %s" % e, "path": DB_PATH}), 500
+    return jsonify({"ok": True, "path": DB_PATH, "users": users, "polls": polls, "decisions": decs})
+
+
+@app.route('/api/admin/db-info')
+def admin_db_info():
+    """Сколько записей в текущей БД (только с RESTORE_KEY)."""
+    key = (os.environ.get('RESTORE_KEY') or '').strip()
+    if not key or (request.headers.get('X-Restore-Key') or '').strip() != key:
+        return jsonify({"error": "Forbidden"}), 403
+    try:
+        conn = get_db()
+        info = {
+            "path": DB_PATH,
+            "users": conn.execute("SELECT COUNT(*) as c FROM users").fetchone()['c'],
+            "polls": conn.execute("SELECT COUNT(*) as c FROM polls").fetchone()['c'],
+            "decisions": conn.execute("SELECT COUNT(*) as c FROM decisions").fetchone()['c'],
+            "votes": conn.execute("SELECT COUNT(*) as c FROM poll_votes").fetchone()['c'],
+            "responses": conn.execute("SELECT COUNT(*) as c FROM decision_responses").fetchone()['c'],
+        }
+        conn.close()
+        return jsonify(info)
+    except Exception as e:
+        return jsonify({"path": DB_PATH, "error": str(e)}), 500
+
+
 @app.route('/api/admin/users')
 @admin_required
 def admin_list_users():
