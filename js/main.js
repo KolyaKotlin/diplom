@@ -1,9 +1,25 @@
 var API = '';
 
+function getGuestId() {
+  try {
+    var k = 'ds_guest_id';
+    var v = localStorage.getItem(k);
+    if (!v) {
+      v = 'g_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem(k, v);
+    }
+    return v;
+  } catch (e) {
+    return 'g_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+}
+
 function _checkBlocked(res) {
   return res;
 }
 function apiPost(url, body) {
+  body = body || {};
+  if (!body.fingerprint) body.fingerprint = getGuestId();
   return fetch(API + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
     .then(function(r) { return r.json().then(function(d) { return { status: r.status, data: d }; }); })
     .then(_checkBlocked);
@@ -46,8 +62,9 @@ function showToast(msg) {
   var el = document.createElement('div');
   el.className = 'toast';
   el.textContent = msg;
+  el.style.cssText = 'position:fixed;left:50%;bottom:1.5rem;transform:translateX(-50%);z-index:9999;background:#111827;color:#fff;padding:0.75rem 1.25rem;border-radius:0.75rem;font-size:0.9375rem;max-width:90%;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.25)';
   document.body.appendChild(el);
-  setTimeout(function() { el.remove(); }, 3000);
+  setTimeout(function() { el.remove(); }, 5000);
 }
 
 // ─── Warning Modal ──────────────────────────────

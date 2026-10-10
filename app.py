@@ -1,4 +1,4 @@
-import os, io, sqlite3, hashlib, hmac, secrets, uuid, base64, json
+import os, io, sqlite3, hashlib, hmac, secrets, uuid, base64, json, tempfile
 from xml.sax.saxutils import escape as _xml_escape
 from functools import wraps
 from datetime import datetime
@@ -282,8 +282,18 @@ def user_dict(row):
         d["isAdmin"] = False
     return d
 
-def get_fingerprint():
-    return hashlib.md5((request.remote_addr or '' + request.headers.get('User-Agent', '')).encode()).hexdigest()
+def get_fingerprint(client_fp=None):
+    """Уникальный id гостя. Нельзя опираться только на IP: в зале у всех один Wi‑Fi."""
+    raw_client = (client_fp or '').strip() if client_fp is not None else ''
+    if not raw_client:
+        body = request.get_json(silent=True) or {}
+        raw_client = (body.get('fingerprint') or request.headers.get('X-Guest-Id') or '').strip()
+    if raw_client:
+        raw_client = raw_client[:128]
+        return hashlib.sha256(('guest:' + raw_client).encode()).hexdigest()[:40]
+    # fallback: IP + User-Agent (скобки важны — иначе UA отбрасывался)
+    raw = (request.remote_addr or '') + '|' + (request.headers.get('User-Agent') or '')
+    return hashlib.md5(raw.encode()).hexdigest()
 
 
 def _signup_client_ip():
@@ -1187,7 +1197,7 @@ def vote_poll(slug):
         conn_chk.close()
         if u_chk and u_chk['is_blocked']:
             return jsonify({"error": "Аккаунт заблокирован. Голосование недоступно.", "blocked": True}), 403
-    d = request.get_json()
+    d = request.get_json() or {}
     oids = d.get('optionIds') or []
     if not oids: return jsonify({"error": "Выберите вариант"}), 400
     conn = get_db()
@@ -1197,12 +1207,12 @@ def vote_poll(slug):
         conn.close(); return jsonify({"error": "Голосование завершено"}), 400
     if p['auth_only'] and 'user_id' not in session:
         conn.close(); return jsonify({"error": "Голосовать могут только авторизованные пользователи"}), 401
-    fp = get_fingerprint()
+    fp = get_fingerprint(d.get('fingerprint'))
     uid = session.get('user_id')
     ex = None
     if uid:
         ex = conn.execute("SELECT id FROM poll_votes WHERE poll_id=? AND user_id=?", (p['id'], uid)).fetchone()
-    if not ex:
+    else:
         ex = conn.execute("SELECT id FROM poll_votes WHERE poll_id=? AND fingerprint=?", (p['id'], fp)).fetchone()
     if ex: conn.close(); return jsonify({"error": "Вы уже голосовали"}), 409
     max_v = p['max_votes'] or 0
@@ -1411,7 +1421,7 @@ def respond_decision(slug):
         conn_chk.close()
         if u_chk and u_chk['is_blocked']:
             return jsonify({"error": "Аккаунт заблокирован. Оценка недоступна.", "blocked": True}), 403
-    d = request.get_json()
+    d = request.get_json() or {}
     scores = d.get('scores') or {}
     conn = get_db()
     dc = conn.execute("SELECT * FROM decisions WHERE slug=?", (slug,)).fetchone()
@@ -1420,7 +1430,7 @@ def respond_decision(slug):
         conn.close(); return jsonify({"error": "Сбор ответов завершён"}), 400
     if dc['auth_only'] and 'user_id' not in session:
         conn.close(); return jsonify({"error": "Только для авторизованных"}), 401
-    fp = get_fingerprint()
+    fp = get_fingerprint(d.get('fingerprint'))
     uid = session.get('user_id')
     if uid:
         ex = conn.execute("SELECT id FROM decision_responses WHERE decision_id=? AND user_id=?", (dc['id'], uid)).fetchone()
@@ -3003,12 +3013,42 @@ def admin_clear_log():
 @app.route('/api/admin/backup-db')
 @admin_required
 def admin_backup_db():
-    """Скачать сырой файл базы данных (бинарный бэкап SQLite)."""
+    """Скачать консистентный бэкап SQLite (через backup API, безопасно при работающем сервере)."""
     from flask import send_file
     if not os.path.exists(DB_PATH):
         return jsonify({"error": "База не найдена", "path": DB_PATH}), 404
     ts = datetime.now().strftime('%Y%m%d-%H%M%S')
-    return send_file(DB_PATH, mimetype='application/octet-stream',
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+    tmp_path = tmp.name
+    tmp.close()
+    src = dst = None
+    try:
+        src = sqlite3.connect(DB_PATH)
+        dst = sqlite3.connect(tmp_path)
+        src.backup(dst)
+    except Exception as e:
+        if dst:
+            dst.close()
+        if src:
+            src.close()
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        return jsonify({"error": f"Не удалось создать бэкап: {e}"}), 500
+    finally:
+        if dst:
+            dst.close()
+        if src:
+            src.close()
+
+    @after_this_request
+    def _cleanup(response):
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        return response
+
+    return send_file(tmp_path, mimetype='application/octet-stream',
                      as_attachment=True, download_name=f'database-{ts}.db')
 
 

@@ -49,7 +49,7 @@
       <div id="voteLoading" style="text-align:center;color:var(--text-muted);">Загрузка...</div>
     </div>
   </div>
-  <script src="js/main.js?v=4"></script>
+  <script src="js/main.js?v=5"></script>
   <script>
     var slug = new URLSearchParams(window.location.search).get('id');
     if (!slug) { document.getElementById('voteCard').innerHTML = '<p style="text-align:center;color:var(--text-muted);">Не найдено</p><div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>'; }
@@ -155,7 +155,10 @@
             var resultLink = (sr === 'always') ? '<a href="results.html?id=' + slug + '" class="btn btn-outline" style="margin-top:1rem;">Результаты</a>' :
               (sr === 'after') ? '<p style="color:var(--text-muted);margin-top:0.5rem;">Результаты будут доступны после завершения.</p>' : '';
             document.getElementById('voteCard').innerHTML = '<div class="vote-done"><h2>Спасибо за голос!</h2>' + resultLink + '<div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div></div>';
-          } else { showToast(res.data.error); btn.disabled = false; btn.textContent = 'Проголосовать'; }
+          } else { showToast((res.data && res.data.error) || 'Не удалось проголосовать'); btn.disabled = false; btn.textContent = 'Проголосовать'; }
+        }).catch(function() {
+          showToast('Ошибка сети. Попробуйте ещё раз');
+          btn.disabled = false; btn.textContent = 'Проголосовать';
         });
       });
     }

@@ -48,7 +48,7 @@
       <p style="text-align:center;color:var(--text-muted);">Загрузка...</p>
     </div>
   </div>
-  <script src="js/main.js?v=4"></script>
+  <script src="js/main.js?v=5"></script>
   <script>
     var slug = new URLSearchParams(window.location.search).get('id');
     if (!slug) { document.getElementById('respondCard').innerHTML = '<p style="text-align:center;color:var(--text-muted);">Не указано решение</p><div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div>'; }
@@ -202,9 +202,12 @@
               document.getElementById('respondCard').innerHTML =
                 '<div class="respond-done"><h2>Спасибо за вашу оценку!</h2><p>Ваши ответы сохранены.</p>' + linkHtml + '<div class="back-links"><a href="feed.html">&larr; Назад в ленту</a><a href="dashboard.html">На главную</a></div></div>';
             } else {
-              showToast(res.data.error);
+              showToast((res.data && res.data.error) || 'Не удалось отправить');
               btn.disabled = false; btn.textContent = 'Отправить оценки';
             }
+          }).catch(function() {
+            showToast('Ошибка сети. Попробуйте ещё раз');
+            btn.disabled = false; btn.textContent = 'Отправить оценки';
           });
         });
     }
